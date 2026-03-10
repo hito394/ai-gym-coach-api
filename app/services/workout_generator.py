@@ -1,5 +1,6 @@
 from typing import List, Dict
 from app.schemas.workout import WorkoutPlanOut, WorkoutDayOut, ExercisePrescription
+from app.utils.exercise_key import normalize_exercise_key
 
 
 SPLIT_TEMPLATES = {
@@ -96,6 +97,7 @@ def generate_plan(
             exercises.append(
                 ExercisePrescription(
                     name=name,
+                    exercise_key=normalize_exercise_key(name),
                     sets=max(2, int(3 * volume_modifier)),
                     rep_range="6-12" if "Press" in name or "Row" in name else "8-15",
                     rpe_target=7.5 * intensity_modifier,

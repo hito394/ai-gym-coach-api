@@ -1,4 +1,5 @@
-from typing import List
+from typing import List, Tuple, Optional
+import json
 from openai import OpenAI
 from app.core.config import get_settings
 from app.schemas.chat import ChatMessage
@@ -9,9 +10,12 @@ settings = get_settings()
 client = OpenAI(api_key=settings.openai_api_key)
 
 
-def chat(messages: List[ChatMessage]) -> str:
+def chat(messages: List[ChatMessage], diagnostics: Optional[dict] = None) -> Tuple[str, Optional[dict]]:
     payload = [
         {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": f"Diagnostics: {diagnostics}"}
+        if diagnostics
+        else {"role": "system", "content": "Diagnostics: none"},
         *[{"role": m.role, "content": m.content} for m in messages],
     ]
 
@@ -22,4 +26,15 @@ def chat(messages: List[ChatMessage]) -> str:
         max_tokens=500,
     )
 
-    return response.choices[0].message.content.strip()
+    content = response.choices[0].message.content.strip()
+    structured = None
+    try:
+        json_start = content.find('{')
+        json_blob = content[json_start:]
+        structured = json.loads(json_blob)
+        reply = content[:json_start].strip() or ""
+    except Exception:
+        reply = content
+        structured = None
+
+    return reply, structured

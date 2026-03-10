@@ -6,8 +6,11 @@ from app.api.routes.users import router as users_router
 from app.api.routes.workouts import router as workouts_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.progression import router as progression_router
-from app.db.session import engine
+import os
+from app.db.session import engine, SessionLocal
 from app.db.base import Base
+from app.utils.exercise_key import ensure_exercise_key_columns
+from app.db.backfill import backfill_exercise_key
 
 settings = get_settings()
 configure_logging()
@@ -24,3 +27,10 @@ app.include_router(progression_router, prefix=settings.api_prefix)
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    ensure_exercise_key_columns(engine)
+    if os.getenv("BACKFILL_ON_STARTUP", "false").lower() == "true":
+        db = SessionLocal()
+        try:
+            backfill_exercise_key(db)
+        finally:
+            db.close()

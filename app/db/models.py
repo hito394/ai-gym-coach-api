@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.base import Base
@@ -51,11 +51,35 @@ class WorkoutDay(Base):
 
 class SetLog(Base):
     __tablename__ = "set_logs"
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_id", name="uq_set_logs_user_client"),
+        Index(
+            "ix_set_logs_user_exercise_key_performed_at",
+            "user_id",
+            "exercise_key",
+            "performed_at",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
+    client_id = Column(String, nullable=True, index=True)
     exercise = Column(String, nullable=False)
+    exercise_key = Column(String, nullable=True, index=True)
     reps = Column(Integer, nullable=False)
     weight = Column(Float, nullable=False)
     rpe = Column(Float, nullable=True)
     performed_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RecommendationLog(Base):
+    __tablename__ = "recommendation_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    exercise = Column(String, nullable=True)
+    exercise_key = Column(String, nullable=True, index=True)
+    recommendation = Column(JSON, nullable=False)
+    outcome = Column(JSON, nullable=True)
+    accuracy = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)

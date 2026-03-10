@@ -1,5 +1,6 @@
 from typing import List, Dict, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from app.utils.exercise_key import normalize_exercise_key
 
 
 class ExerciseSet(BaseModel):
@@ -10,6 +11,7 @@ class ExerciseSet(BaseModel):
 
 class ExercisePrescription(BaseModel):
     name: str
+    exercise_key: Optional[str] = None
     sets: int
     rep_range: str
     rpe_target: float
@@ -44,17 +46,46 @@ class GenerateWorkoutIn(BaseModel):
 
 class SetLogIn(BaseModel):
     user_id: int
+    client_id: Optional[str] = None
+    exercise_key: Optional[str] = None
+    exercise_name: Optional[str] = None
+    exercise: Optional[str] = None
+    reps: int
+    weight: float
+    rpe: Optional[float] = None
+
+    @model_validator(mode="after")
+    def normalize_fields(self):
+        exercise_key = (self.exercise_key or "").strip()
+        exercise_name = (self.exercise_name or self.exercise or "").strip()
+        if exercise_key:
+            self.exercise_key = exercise_key
+            if not exercise_name:
+                self.exercise_name = exercise_key
+            return self
+        if not exercise_name:
+            raise ValueError("exercise_key or exercise_name is required")
+        self.exercise_name = exercise_name
+        self.exercise_key = normalize_exercise_key(exercise_name)
+        return self
+
+
+class SetLogOut(BaseModel):
+    id: int
+    user_id: int
+    client_id: Optional[str] = None
     exercise: str
+    exercise_key: str
     reps: int
     weight: float
     rpe: Optional[float] = None
 
 
-class SetLogOut(SetLogIn):
-    id: int
-
-
 class ProgressSummaryOut(BaseModel):
     user_id: int
     total_volume: float
-    prs: Dict[str, float]
+    weekly_volume_by_muscle_group: Dict[str, float]
+    rep_prs: Dict[str, int]
+    one_rm_prs: Dict[str, float]
+    strength_index: float
+    strength_index_by_lift: Dict[str, float]
