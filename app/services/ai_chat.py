@@ -64,10 +64,22 @@ def _fallback_chat(messages: List[ChatMessage], diagnostics: Optional[dict]) -> 
     return f"{prefix}\n- " + "\n- ".join(tips)
 
 
+def _fallback_with_notice(
+    notice: str,
+    messages: List[ChatMessage],
+    diagnostics: Optional[dict],
+) -> str:
+    return f"{notice}\n\n{_fallback_chat(messages, diagnostics)}"
+
+
 def chat(messages: List[ChatMessage], diagnostics: Optional[dict] = None) -> Tuple[str, Optional[dict]]:
     if not settings.openai_api_key:
         return (
-            _fallback_chat(messages, diagnostics),
+            _fallback_with_notice(
+                "AI coach is not configured yet. Please add OPENAI_API_KEY on the server.",
+                messages,
+                diagnostics,
+            ),
             None,
         )
 
@@ -88,7 +100,11 @@ def chat(messages: List[ChatMessage], diagnostics: Optional[dict] = None) -> Tup
         )
     except Exception:
         return (
-            _fallback_chat(messages, diagnostics),
+            _fallback_with_notice(
+                "AI coach is temporarily unavailable. Please try again in a moment.",
+                messages,
+                diagnostics,
+            ),
             None,
         )
 
