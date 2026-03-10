@@ -11,9 +11,14 @@ def chat_coach(payload: ChatRequest):
         raise HTTPException(status_code=400, detail="Messages required")
 
     reply, structured = chat(payload.messages, diagnostics=payload.diagnostics)
+    structured_out = None
+    if structured:
+        try:
+            structured_out = CoachStructuredOut.model_validate(structured)
+        except Exception:
+            structured_out = None
+
     return ChatResponse(
         reply=reply,
-        structured=CoachStructuredOut.model_validate(structured)
-        if structured
-        else None,
+        structured=structured_out,
     )

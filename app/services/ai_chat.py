@@ -11,6 +11,12 @@ client = OpenAI(api_key=settings.openai_api_key)
 
 
 def chat(messages: List[ChatMessage], diagnostics: Optional[dict] = None) -> Tuple[str, Optional[dict]]:
+    if not settings.openai_api_key:
+        return (
+            "AI coach is not configured yet. Please add OPENAI_API_KEY on the server.",
+            None,
+        )
+
     payload = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "system", "content": f"Diagnostics: {diagnostics}"}
@@ -19,12 +25,18 @@ def chat(messages: List[ChatMessage], diagnostics: Optional[dict] = None) -> Tup
         *[{"role": m.role, "content": m.content} for m in messages],
     ]
 
-    response = client.chat.completions.create(
-        model=settings.openai_model,
-        messages=payload,
-        temperature=0.2,
-        max_tokens=500,
-    )
+    try:
+        response = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=payload,
+            temperature=0.2,
+            max_tokens=500,
+        )
+    except Exception:
+        return (
+            "AI coach is temporarily unavailable. Please try again in a moment.",
+            None,
+        )
 
     content = response.choices[0].message.content.strip()
     structured = None
