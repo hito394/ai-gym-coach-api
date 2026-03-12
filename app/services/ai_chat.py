@@ -1,5 +1,6 @@
 from typing import List, Tuple, Optional, Any
 import json
+import logging
 from openai import OpenAI
 from app.core.config import get_settings
 from app.schemas.chat import ChatMessage
@@ -7,7 +8,7 @@ from app.utils.prompts import SYSTEM_PROMPT
 
 
 settings = get_settings()
-client = OpenAI(api_key=settings.openai_api_key)
+logger = logging.getLogger(__name__)
 
 
 def _last_user_message(messages: List[ChatMessage]) -> str:
@@ -57,31 +58,22 @@ def _fallback_chat(messages: List[ChatMessage], diagnostics: Optional[dict]) -> 
             "最後の1セットだけ+1 repを狙うと安全に漸進できます。",
         ]
 
-    prefix = "AIコーチのクラウド応答が一時的に利用できないため、ローカル提案を返します。"
     if user_msg:
-        prefix += f" 質問: {user_msg[:80]}"
+        tips.insert(0, f"質問の要点: {user_msg[:80]}")
 
-    return f"{prefix}\n- " + "\n- ".join(tips)
+    return "- " + "\n- ".join(tips)
 
 
-def _fallback_with_notice(
-    notice: str,
-    messages: List[ChatMessage],
-    diagnostics: Optional[dict],
-) -> str:
-    return f"{notice}\n\n{_fallback_chat(messages, diagnostics)}"
+def _build_client() -> Optional[OpenAI]:
+    if not settings.openai_api_key:
+        return None
+    return OpenAI(api_key=settings.openai_api_key)
 
 
 def chat(messages: List[ChatMessage], diagnostics: Optional[dict] = None) -> Tuple[str, Optional[dict]]:
-    if not settings.openai_api_key:
-        return (
-            _fallback_with_notice(
-                "AI coach is not configured yet. Please add OPENAI_API_KEY on the server.",
-                messages,
-                diagnostics,
-            ),
-            None,
-        )
+    client = _build_client()
+    if client is None:
+        return _fallback_chat(messages, diagnostics), None
 
     payload = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -91,22 +83,25 @@ def chat(messages: List[ChatMessage], diagnostics: Optional[dict] = None) -> Tup
         *[{"role": m.role, "content": m.content} for m in messages],
     ]
 
-    try:
-        response = client.chat.completions.create(
-            model=settings.openai_model,
-            messages=payload,
-            temperature=0.2,
-            max_tokens=500,
-        )
-    except Exception:
-        return (
-            _fallback_with_notice(
-                "AI coach is temporarily unavailable. Please try again in a moment.",
-                messages,
-                diagnostics,
-            ),
-            None,
-        )
+    model_candidates = [settings.openai_model, "gpt-4o-mini"]
+    # Keep order but avoid duplicate calls when configured model is already gpt-4o-mini.
+    model_candidates = list(dict.fromkeys(model_candidates))
+
+    response = None
+    for model_name in model_candidates:
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=payload,
+                temperature=0.2,
+                max_tokens=500,
+            )
+            break
+        except Exception as exc:
+            logger.warning("OpenAI call failed for model %s: %s", model_name, exc)
+
+    if response is None:
+        return _fallback_chat(messages, diagnostics), None
 
     content = response.choices[0].message.content.strip()
     structured = None
