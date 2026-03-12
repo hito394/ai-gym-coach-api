@@ -6,6 +6,8 @@ from app.api.routes.users import router as users_router
 from app.api.routes.workouts import router as workouts_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.progression import router as progression_router
+from app.api.routes.analytics import router as analytics_router
+from app.api.routes.form import router as form_router
 import os
 from app.db.session import engine, SessionLocal
 from app.db.base import Base
@@ -22,6 +24,8 @@ app.include_router(users_router, prefix=settings.api_prefix)
 app.include_router(workouts_router, prefix=settings.api_prefix)
 app.include_router(chat_router, prefix=settings.api_prefix)
 app.include_router(progression_router, prefix=settings.api_prefix)
+app.include_router(analytics_router, prefix=settings.api_prefix)
+app.include_router(form_router, prefix=settings.api_prefix)
 
 
 @app.on_event("startup")

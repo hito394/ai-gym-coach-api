@@ -4,7 +4,17 @@ from app.api.deps import get_db
 from app.db import models
 from sqlalchemy import func
 from datetime import datetime, timedelta
-from app.schemas.workout import GenerateWorkoutIn, WorkoutPlanOut, SetLogIn, SetLogOut, ProgressSummaryOut
+from collections import defaultdict
+from app.schemas.workout import (
+    GenerateWorkoutIn,
+    WorkoutPlanOut,
+    SetLogIn,
+    SetLogOut,
+    ProgressSummaryOut,
+    WorkoutHistoryOut,
+    WorkoutHistorySessionOut,
+    WorkoutHistorySetOut,
+)
 from app.utils.exercise_key import normalize_exercise_key
 from app.services.workout_generator import generate_plan
 
@@ -75,6 +85,30 @@ def log_set(payload: SetLogIn, db: Session = Depends(get_db)):
             .first()
         )
         if existing:
+            existing_meta = (
+                db.query(models.SetLogMeta)
+                .filter(models.SetLogMeta.set_log_id == existing.id)
+                .first()
+            )
+            if existing_meta is None:
+                existing_meta = models.SetLogMeta(
+                    set_log_id=existing.id,
+                    user_id=existing.user_id,
+                    session_id=payload.session_id,
+                    rest_seconds=payload.rest_seconds,
+                )
+                db.add(existing_meta)
+                db.commit()
+            else:
+                changed = False
+                if payload.session_id and existing_meta.session_id != payload.session_id:
+                    existing_meta.session_id = payload.session_id
+                    changed = True
+                if payload.rest_seconds is not None and existing_meta.rest_seconds != payload.rest_seconds:
+                    existing_meta.rest_seconds = payload.rest_seconds
+                    changed = True
+                if changed:
+                    db.commit()
             return SetLogOut(
                 id=existing.id,
                 user_id=existing.user_id,
@@ -84,6 +118,8 @@ def log_set(payload: SetLogIn, db: Session = Depends(get_db)):
                 reps=existing.reps,
                 weight=existing.weight,
                 rpe=existing.rpe,
+                rest_seconds=existing_meta.rest_seconds if existing_meta else None,
+                session_id=existing_meta.session_id if existing_meta else None,
             )
 
     record = models.SetLog(
@@ -99,6 +135,15 @@ def log_set(payload: SetLogIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(record)
 
+    meta = models.SetLogMeta(
+        set_log_id=record.id,
+        user_id=payload.user_id,
+        session_id=payload.session_id,
+        rest_seconds=payload.rest_seconds,
+    )
+    db.add(meta)
+    db.commit()
+
     return SetLogOut(
         id=record.id,
         user_id=record.user_id,
@@ -108,7 +153,80 @@ def log_set(payload: SetLogIn, db: Session = Depends(get_db)):
         reps=record.reps,
         weight=record.weight,
         rpe=record.rpe,
+        rest_seconds=meta.rest_seconds,
+        session_id=meta.session_id,
     )
+
+
+@router.get("/history/{user_id}", response_model=WorkoutHistoryOut)
+def workout_history(user_id: int, limit: int = 20, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    logs = (
+        db.query(models.SetLog)
+        .filter(models.SetLog.user_id == user_id)
+        .order_by(models.SetLog.performed_at.desc())
+        .all()
+    )
+
+    if not logs:
+        return WorkoutHistoryOut(user_id=user_id, sessions=[])
+
+    log_ids = [log.id for log in logs]
+    meta_rows = (
+        db.query(models.SetLogMeta)
+        .filter(models.SetLogMeta.user_id == user_id)
+        .filter(models.SetLogMeta.set_log_id.in_(log_ids))
+        .all()
+    )
+    meta_by_log_id = {meta.set_log_id: meta for meta in meta_rows}
+
+    grouped_entries: dict[str, list[WorkoutHistorySetOut]] = defaultdict(list)
+    session_time: dict[str, datetime] = {}
+
+    for log in logs:
+        meta = meta_by_log_id.get(log.id)
+        performed_at = log.performed_at or datetime.utcnow()
+        fallback_session = f"legacy-{performed_at.date().isoformat()}"
+        session_id = (meta.session_id if meta and meta.session_id else fallback_session)
+
+        grouped_entries[session_id].append(
+            WorkoutHistorySetOut(
+                exercise=log.exercise,
+                exercise_key=log.exercise_key or normalize_exercise_key(log.exercise),
+                reps=log.reps,
+                weight=log.weight,
+                rpe=log.rpe,
+                rest_seconds=meta.rest_seconds if meta else None,
+                performed_at=performed_at.isoformat(),
+            )
+        )
+        if session_id not in session_time or performed_at > session_time[session_id]:
+            session_time[session_id] = performed_at
+
+    ordered_sessions = sorted(
+        grouped_entries.keys(), key=lambda sid: session_time[sid], reverse=True
+    )[: max(1, min(limit, 100))]
+
+    sessions_out: list[WorkoutHistorySessionOut] = []
+    for session_id in ordered_sessions:
+        entries = sorted(
+            grouped_entries[session_id], key=lambda entry: entry.performed_at
+        )
+        total_volume = sum(entry.reps * entry.weight for entry in entries)
+        sessions_out.append(
+            WorkoutHistorySessionOut(
+                session_id=session_id,
+                performed_at=session_time[session_id].isoformat(),
+                total_sets=len(entries),
+                total_volume=round(total_volume, 2),
+                entries=entries,
+            )
+        )
+
+    return WorkoutHistoryOut(user_id=user_id, sessions=sessions_out)
 
 
 @router.get("/summary/{user_id}", response_model=ProgressSummaryOut)

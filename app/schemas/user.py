@@ -1,4 +1,5 @@
 from typing import List, Optional
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 
@@ -20,3 +21,15 @@ class UserPreferenceIn(BaseModel):
     split_preference: Optional[str] = Field(
         default=None, pattern="^(ppl|upper_lower|full_body)$"
     )
+
+
+class BodyWeightLogIn(BaseModel):
+    weight_kg: float = Field(..., gt=0)
+    measured_at: Optional[datetime] = None
+
+
+class BodyWeightLogOut(BaseModel):
+    id: int
+    user_id: int
+    weight_kg: float
+    measured_at: datetime

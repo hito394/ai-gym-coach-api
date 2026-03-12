@@ -72,6 +72,26 @@ class SetLog(Base):
     performed_at = Column(DateTime, default=datetime.utcnow)
 
 
+class SetLogMeta(Base):
+    __tablename__ = "set_log_meta"
+
+    id = Column(Integer, primary_key=True, index=True)
+    set_log_id = Column(Integer, ForeignKey("set_logs.id"), unique=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    session_id = Column(String, nullable=True, index=True)
+    rest_seconds = Column(Integer, nullable=True)
+    logged_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BodyWeightLog(Base):
+    __tablename__ = "body_weight_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    weight_kg = Column(Float, nullable=False)
+    measured_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class RecommendationLog(Base):
     __tablename__ = "recommendation_logs"
 
@@ -82,4 +102,24 @@ class RecommendationLog(Base):
     recommendation = Column(JSON, nullable=False)
     outcome = Column(JSON, nullable=True)
     accuracy = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FormAnalysisSession(Base):
+    __tablename__ = "form_analysis_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    exercise_key = Column(String, nullable=False, index=True)
+    model_name = Column(String, nullable=True)
+    model_version = Column(String, nullable=True)
+    depth_score = Column(Float, nullable=False, default=0.0)
+    torso_angle_score = Column(Float, nullable=False, default=0.0)
+    symmetry_score = Column(Float, nullable=False, default=0.0)
+    tempo_score = Column(Float, nullable=False, default=0.0)
+    bar_path_score = Column(Float, nullable=False, default=0.0)
+    overall_score = Column(Float, nullable=False, default=0.0)
+    issues = Column(JSON, nullable=True)
+    diagnostics = Column(JSON, nullable=True)
+    feedback = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

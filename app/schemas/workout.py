@@ -53,6 +53,8 @@ class SetLogIn(BaseModel):
     reps: int
     weight: float
     rpe: Optional[float] = None
+    rest_seconds: Optional[int] = None
+    session_id: Optional[str] = None
 
     @model_validator(mode="after")
     def normalize_fields(self):
@@ -79,6 +81,31 @@ class SetLogOut(BaseModel):
     reps: int
     weight: float
     rpe: Optional[float] = None
+    rest_seconds: Optional[int] = None
+    session_id: Optional[str] = None
+
+
+class WorkoutHistorySetOut(BaseModel):
+    exercise: str
+    exercise_key: str
+    reps: int
+    weight: float
+    rpe: Optional[float] = None
+    rest_seconds: Optional[int] = None
+    performed_at: str
+
+
+class WorkoutHistorySessionOut(BaseModel):
+    session_id: str
+    performed_at: str
+    total_sets: int
+    total_volume: float
+    entries: List[WorkoutHistorySetOut]
+
+
+class WorkoutHistoryOut(BaseModel):
+    user_id: int
+    sessions: List[WorkoutHistorySessionOut]
 
 
 class ProgressSummaryOut(BaseModel):
