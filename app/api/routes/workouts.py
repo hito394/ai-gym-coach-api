@@ -10,6 +10,8 @@ from app.schemas.workout import (
     WorkoutPlanOut,
     SetLogIn,
     SetLogOut,
+    SetLogDeleteIn,
+    DeleteSetOut,
     ProgressSummaryOut,
     WorkoutHistoryOut,
     WorkoutHistorySessionOut,
@@ -85,6 +87,24 @@ def log_set(payload: SetLogIn, db: Session = Depends(get_db)):
             .first()
         )
         if existing:
+            changed = False
+            next_exercise = exercise_name or existing.exercise
+            if existing.exercise != next_exercise:
+                existing.exercise = next_exercise
+                changed = True
+            if existing.exercise_key != exercise_key:
+                existing.exercise_key = exercise_key
+                changed = True
+            if existing.reps != payload.reps:
+                existing.reps = payload.reps
+                changed = True
+            if existing.weight != payload.weight:
+                existing.weight = payload.weight
+                changed = True
+            if existing.rpe != payload.rpe:
+                existing.rpe = payload.rpe
+                changed = True
+
             existing_meta = (
                 db.query(models.SetLogMeta)
                 .filter(models.SetLogMeta.set_log_id == existing.id)
@@ -109,6 +129,7 @@ def log_set(payload: SetLogIn, db: Session = Depends(get_db)):
                     changed = True
                 if changed:
                     db.commit()
+                    db.refresh(existing)
             return SetLogOut(
                 id=existing.id,
                 user_id=existing.user_id,
@@ -156,6 +177,32 @@ def log_set(payload: SetLogIn, db: Session = Depends(get_db)):
         rest_seconds=meta.rest_seconds,
         session_id=meta.session_id,
     )
+
+
+@router.post("/delete_set", response_model=DeleteSetOut)
+def delete_set(payload: SetLogDeleteIn, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == payload.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = (
+        db.query(models.SetLog)
+        .filter(models.SetLog.user_id == payload.user_id)
+        .filter(models.SetLog.client_id == payload.client_id)
+        .first()
+    )
+    if not existing:
+        return DeleteSetOut(deleted=True, client_id=payload.client_id)
+
+    (
+        db.query(models.SetLogMeta)
+        .filter(models.SetLogMeta.set_log_id == existing.id)
+        .delete()
+    )
+    db.delete(existing)
+    db.commit()
+
+    return DeleteSetOut(deleted=True, client_id=payload.client_id)
 
 
 @router.get("/history/{user_id}", response_model=WorkoutHistoryOut)

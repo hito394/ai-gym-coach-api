@@ -85,6 +85,16 @@ class SetLogOut(BaseModel):
     session_id: Optional[str] = None
 
 
+class SetLogDeleteIn(BaseModel):
+    user_id: int
+    client_id: str
+
+
+class DeleteSetOut(BaseModel):
+    deleted: bool
+    client_id: str
+
+
 class WorkoutHistorySetOut(BaseModel):
     exercise: str
     exercise_key: str

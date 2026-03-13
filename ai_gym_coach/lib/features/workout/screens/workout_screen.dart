@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../../domain/models/workout_plan.dart';
 import '../../../app/providers.dart';
 import '../providers/workout_provider.dart';
@@ -15,6 +16,18 @@ class WorkoutScreen extends ConsumerStatefulWidget {
 }
 
 class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
+  static const _uiBoxName = 'workout_ui';
+  static const _customMenusKey = 'custom_menu_names';
+  static const _defaultManualMenus = <String>[
+    'Bench Press',
+    'Squat',
+    'Deadlift',
+    'Overhead Press',
+    'Barbell Row',
+    'Lat Pulldown',
+    'Leg Press',
+  ];
+
   String _split = 'ppl';
   int _activeExercisePosition = 0;
   Timer? _restTimer;
@@ -24,10 +37,23 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
   final Map<String, int> _repsByExercise = {};
   final Map<String, double> _weightByExercise = {};
   final Map<String, double?> _rpeByExercise = {};
+  final TextEditingController _customMenuController = TextEditingController();
+  List<String> _customMenus = const [];
+  String? _selectedManualMenu;
+  int _manualReps = 8;
+  double _manualWeight = 0.0;
+  double? _manualRpe = 8.0;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadCustomMenus());
+  }
 
   @override
   void dispose() {
     _restTimer?.cancel();
+    _customMenuController.dispose();
     super.dispose();
   }
 
@@ -104,11 +130,243 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
     }
   }
 
+  List<String> get _allManualMenus {
+    final seen = <String>{};
+    final merged = <String>[];
+    for (final item in [..._defaultManualMenus, ..._customMenus]) {
+      final menu = item.trim();
+      if (menu.isEmpty) continue;
+      final key = menu.toLowerCase();
+      if (seen.add(key)) {
+        merged.add(menu);
+      }
+    }
+    return merged;
+  }
+
+  Future<void> _loadCustomMenus() async {
+    final box = await Hive.openBox(_uiBoxName);
+    final raw = box.get(_customMenusKey, defaultValue: const <dynamic>[]);
+    final custom = raw is List ? raw.whereType<String>().toList() : <String>[];
+    if (!mounted) return;
+    setState(() {
+      _customMenus = custom;
+      _selectedManualMenu ??=
+          _allManualMenus.isNotEmpty ? _allManualMenus.first : null;
+    });
+  }
+
+  Future<void> _saveCustomMenus() async {
+    final box = await Hive.openBox(_uiBoxName);
+    await box.put(_customMenusKey, _customMenus);
+  }
+
+  bool _addCustomMenu(String rawName) {
+    final name = rawName.trim();
+    if (name.isEmpty) return false;
+    final existing = _allManualMenus
+        .where((menu) => menu.toLowerCase() == name.toLowerCase());
+    if (existing.isNotEmpty) {
+      setState(() => _selectedManualMenu = existing.first);
+      return true;
+    }
+
+    setState(() {
+      _customMenus = [name, ..._customMenus];
+      _selectedManualMenu = name;
+    });
+    unawaited(_saveCustomMenus());
+    return true;
+  }
+
+  void _removeCustomMenu(String name) {
+    setState(() {
+      _customMenus = _customMenus
+          .where((menu) => menu.toLowerCase() != name.toLowerCase())
+          .toList();
+      if (_selectedManualMenu?.toLowerCase() == name.toLowerCase()) {
+        _selectedManualMenu =
+            _allManualMenus.isNotEmpty ? _allManualMenus.first : null;
+      }
+    });
+    unawaited(_saveCustomMenus());
+  }
+
+  String _manualExerciseKey(String menuName) {
+    final slug = menuName
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (slug.isEmpty) {
+      return 'manual_${menuName.hashCode.abs()}';
+    }
+    return 'manual_$slug';
+  }
+
+  void _onManualMenuSelected(WorkoutState state, String menuName) {
+    final key = _manualExerciseKey(menuName);
+    final last = state.lastSetByExercise[key];
+    setState(() {
+      _selectedManualMenu = menuName;
+      if (last != null) {
+        _manualReps = last.reps;
+        _manualWeight = last.weight;
+        _manualRpe = last.rpe;
+      }
+    });
+  }
+
+  void _logManualSet(WorkoutState state, String menuName) {
+    if (!state.sessionActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Start session first, then log sets.')),
+      );
+      return;
+    }
+    if (_manualWeight <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter weight before logging.')),
+      );
+      return;
+    }
+
+    final key = _manualExerciseKey(menuName);
+    HapticFeedback.mediumImpact();
+    ref.read(workoutProvider.notifier).logSet(
+          exerciseName: menuName,
+          exerciseKey: key,
+          reps: _manualReps,
+          weight: _manualWeight,
+          rpe: _manualRpe,
+          restSeconds: _customRestSeconds,
+        );
+    _startRestTimer(_customRestSeconds);
+  }
+
+  Future<void> _showAddMenuDialog() async {
+    _customMenuController.clear();
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Custom Menu'),
+        content: TextField(
+          controller: _customMenuController,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(
+            labelText: 'Exercise name',
+            hintText: 'e.g. Incline Dumbbell Press',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final ok = _addCustomMenu(_customMenuController.text);
+              Navigator.pop(context, ok);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (added == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Custom menu saved.')),
+      );
+    }
+  }
+
+  Future<void> _showEditSetDialog(SessionSet set) async {
+    final repsController = TextEditingController(text: set.reps.toString());
+    final weightController =
+        TextEditingController(text: set.weight.toStringAsFixed(1));
+    final rpeController = TextEditingController(
+      text: set.rpe == null ? '' : set.rpe!.toStringAsFixed(1),
+    );
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit ${set.exerciseName}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: repsController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Reps'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: weightController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Weight (kg)'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: rpeController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'RPE (optional)',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final reps = int.tryParse(repsController.text.trim());
+              final weight = double.tryParse(weightController.text.trim());
+              final rpeText = rpeController.text.trim();
+              final rpe = rpeText.isEmpty ? null : double.tryParse(rpeText);
+              if (reps == null || reps < 1 || weight == null || weight <= 0) {
+                return;
+              }
+              await ref.read(workoutProvider.notifier).updateSessionSet(
+                    id: set.id,
+                    reps: reps,
+                    weight: weight,
+                    rpe: rpe,
+                  );
+              if (!context.mounted) return;
+              Navigator.pop(context, true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    repsController.dispose();
+    weightController.dispose();
+    rpeController.dispose();
+
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Log updated.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(workoutProvider);
     final pendingCountAsync = ref.watch(pendingUploadsCountProvider);
     final quickLog = _resolveQuickLogContext(state);
+    final manualMenus = _allManualMenus;
+    final selectedManualMenu =
+        manualMenus.contains(_selectedManualMenu) ? _selectedManualMenu : null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Workout')),
@@ -164,6 +422,14 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
             error: (_, __) => const SizedBox.shrink(),
           ),
           const SizedBox(height: 12),
+          _buildManualLogCard(
+            state: state,
+            manualMenus: manualMenus,
+            selectedManualMenu: selectedManualMenu,
+          ),
+          const SizedBox(height: 12),
+          _buildSessionLogManager(state),
+          const SizedBox(height: 12),
           if (quickLog != null)
             ..._buildScorecard(state: state, quickLog: quickLog),
           const SizedBox(height: 16),
@@ -185,6 +451,255 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
             ...state.plan!.days.map((day) => _DayCard(day: day)),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildManualLogCard({
+    required WorkoutState state,
+    required List<String> manualMenus,
+    required String? selectedManualMenu,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Manual Log', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'Pick or add your own exercise, then log in one tap.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    key: ValueKey(selectedManualMenu ?? 'none'),
+                    initialValue: selectedManualMenu,
+                    decoration:
+                        const InputDecoration(labelText: 'Exercise Menu'),
+                    items: manualMenus
+                        .map(
+                          (menu) => DropdownMenuItem(
+                            value: menu,
+                            child: Text(menu),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      _onManualMenuSelected(state, value);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  onPressed: _showAddMenuDialog,
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Add custom menu',
+                ),
+              ],
+            ),
+            if (_customMenus.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _customMenus
+                    .map(
+                      (menu) => InputChip(
+                        label: Text(menu),
+                        selected: selectedManualMenu?.toLowerCase() ==
+                            menu.toLowerCase(),
+                        onSelected: (_) => _onManualMenuSelected(state, menu),
+                        onDeleted: () => _removeCustomMenu(menu),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+            const SizedBox(height: 12),
+            _QuickValueDisplay(
+              label: 'Weight',
+              value: '${_manualWeight.toStringAsFixed(1)} kg',
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _QuickAdjustButton(
+                  label: '-2.5',
+                  onTap: () => setState(() {
+                    _manualWeight = double.parse((_manualWeight - 2.5)
+                        .clamp(0.0, 999.0)
+                        .toStringAsFixed(1));
+                  }),
+                ),
+                const SizedBox(width: 8),
+                _QuickAdjustButton(
+                  label: '-1.25',
+                  onTap: () => setState(() {
+                    _manualWeight = double.parse((_manualWeight - 1.25)
+                        .clamp(0.0, 999.0)
+                        .toStringAsFixed(2));
+                  }),
+                ),
+                const SizedBox(width: 8),
+                _QuickAdjustButton(
+                  label: '+1.25',
+                  onTap: () => setState(() {
+                    _manualWeight = double.parse((_manualWeight + 1.25)
+                        .clamp(0.0, 999.0)
+                        .toStringAsFixed(2));
+                  }),
+                ),
+                const SizedBox(width: 8),
+                _QuickAdjustButton(
+                  label: '+2.5',
+                  onTap: () => setState(() {
+                    _manualWeight = double.parse((_manualWeight + 2.5)
+                        .clamp(0.0, 999.0)
+                        .toStringAsFixed(1));
+                  }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _QuickValueDisplay(label: 'Reps', value: '$_manualReps'),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _QuickAdjustButton(
+                  label: '-1',
+                  onTap: () => setState(() {
+                    _manualReps = (_manualReps - 1).clamp(1, 99);
+                  }),
+                ),
+                const SizedBox(width: 8),
+                _QuickAdjustButton(
+                  label: '+1',
+                  onTap: () => setState(() {
+                    _manualReps = (_manualReps + 1).clamp(1, 99);
+                  }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Text('RPE'),
+                Expanded(
+                  child: Slider(
+                    value: (_manualRpe ?? 8.0).clamp(6.0, 10.0),
+                    min: 6,
+                    max: 10,
+                    divisions: 8,
+                    label: (_manualRpe ?? 8.0).toStringAsFixed(1),
+                    onChanged: (value) {
+                      setState(() => _manualRpe = value);
+                    },
+                  ),
+                ),
+                Text((_manualRpe ?? 8.0).toStringAsFixed(1)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: selectedManualMenu == null
+                    ? null
+                    : () => _logManualSet(state, selectedManualMenu),
+                icon: const Icon(Icons.add_task),
+                label: const Text('LOG CUSTOM SET'),
+              ),
+            ),
+            if (!state.sessionActive)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Start session to enable logging.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSessionLogManager(WorkoutState state) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Log Manager',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Text('${state.sessionSets.length} sets'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (state.sessionSets.isEmpty)
+              Text(
+                'No sets yet. Use Quick Log or Manual Log.',
+                style: Theme.of(context).textTheme.bodySmall,
+              )
+            else
+              ...state.sessionSets.take(20).map(
+                    (set) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        title: Text(
+                          '${set.exerciseName}  ${set.reps} x ${set.weight.toStringAsFixed(1)}kg',
+                        ),
+                        subtitle: Text(
+                          set.rpe == null
+                              ? (set.synced ? 'Synced' : 'Pending sync')
+                              : 'RPE ${set.rpe!.toStringAsFixed(1)} • ${set.synced ? 'Synced' : 'Pending sync'}',
+                        ),
+                        trailing: Wrap(
+                          spacing: 2,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              tooltip: 'Edit',
+                              onPressed: () => _showEditSetDialog(set),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              tooltip: 'Delete',
+                              onPressed: () {
+                                unawaited(ref
+                                    .read(workoutProvider.notifier)
+                                    .removeSessionSet(set.id));
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+            if (state.sessionSets.length > 20)
+              Text(
+                'Showing latest 20 sets.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+          ],
+        ),
       ),
     );
   }
