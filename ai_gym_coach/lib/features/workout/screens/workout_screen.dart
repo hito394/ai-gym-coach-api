@@ -43,6 +43,8 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
   int _manualReps = 8;
   double _manualWeight = 0.0;
   double? _manualRpe = 8.0;
+  String _logSort = 'newest';
+  String _logFilter = 'all';
 
   @override
   void initState() {
@@ -631,6 +633,34 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
   }
 
   Widget _buildSessionLogManager(WorkoutState state) {
+    final filterOptions = <String>{'all'}
+      ..addAll(state.sessionSets.map((set) => set.exerciseName));
+
+    final filtered = state.sessionSets.where((set) {
+      if (_logFilter == 'all') {
+        return true;
+      }
+      return set.exerciseName == _logFilter;
+    }).toList();
+
+    switch (_logSort) {
+      case 'oldest':
+        filtered.setAll(0, filtered.reversed);
+        break;
+      case 'weight_desc':
+        filtered.sort((a, b) => b.weight.compareTo(a.weight));
+        break;
+      case 'reps_desc':
+        filtered.sort((a, b) => b.reps.compareTo(a.reps));
+        break;
+      case 'newest':
+      default:
+        // Keep insertion order from state.sessionSets (newest first).
+        break;
+    }
+
+    final visibleSets = filtered.take(20).toList();
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -644,58 +674,115 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
                   'Log Manager',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                Text('${state.sessionSets.length} sets'),
+                Text('${filtered.length} / ${state.sessionSets.length} sets'),
               ],
             ),
             const SizedBox(height: 8),
-            if (state.sessionSets.isEmpty)
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _logFilter,
+                    decoration: const InputDecoration(
+                      labelText: 'Filter',
+                    ),
+                    items: filterOptions
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child:
+                                Text(value == 'all' ? 'All Exercises' : value),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _logFilter = value);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _logSort,
+                    decoration: const InputDecoration(
+                      labelText: 'Sort',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'newest',
+                        child: Text('Newest'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'oldest',
+                        child: Text('Oldest'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'weight_desc',
+                        child: Text('Weight High-Low'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'reps_desc',
+                        child: Text('Reps High-Low'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _logSort = value);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (visibleSets.isEmpty)
               Text(
                 'No sets yet. Use Quick Log or Manual Log.',
                 style: Theme.of(context).textTheme.bodySmall,
               )
             else
-              ...state.sessionSets.take(20).map(
-                    (set) => Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.white12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ListTile(
-                        dense: true,
-                        title: Text(
-                          '${set.exerciseName}  ${set.reps} x ${set.weight.toStringAsFixed(1)}kg',
+              ...visibleSets.map(
+                (set) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListTile(
+                    dense: true,
+                    title: Text(
+                      '${set.exerciseName}  ${set.reps} x ${set.weight.toStringAsFixed(1)}kg',
+                    ),
+                    subtitle: Text(
+                      set.rpe == null
+                          ? (set.synced ? 'Synced' : 'Pending sync')
+                          : 'RPE ${set.rpe!.toStringAsFixed(1)} • ${set.synced ? 'Synced' : 'Pending sync'}',
+                    ),
+                    trailing: Wrap(
+                      spacing: 2,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined),
+                          tooltip: 'Edit',
+                          onPressed: () => _showEditSetDialog(set),
                         ),
-                        subtitle: Text(
-                          set.rpe == null
-                              ? (set.synced ? 'Synced' : 'Pending sync')
-                              : 'RPE ${set.rpe!.toStringAsFixed(1)} • ${set.synced ? 'Synced' : 'Pending sync'}',
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: 'Delete',
+                          onPressed: () {
+                            unawaited(ref
+                                .read(workoutProvider.notifier)
+                                .removeSessionSet(set.id));
+                          },
                         ),
-                        trailing: Wrap(
-                          spacing: 2,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined),
-                              tooltip: 'Edit',
-                              onPressed: () => _showEditSetDialog(set),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              tooltip: 'Delete',
-                              onPressed: () {
-                                unawaited(ref
-                                    .read(workoutProvider.notifier)
-                                    .removeSessionSet(set.id));
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   ),
-            if (state.sessionSets.length > 20)
+                ),
+              ),
+            if (filtered.length > 20)
               Text(
-                'Showing latest 20 sets.',
+                'Showing top 20 results.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
           ],

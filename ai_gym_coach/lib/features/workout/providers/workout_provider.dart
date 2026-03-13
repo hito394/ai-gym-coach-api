@@ -426,6 +426,7 @@ class WorkoutController extends StateNotifier<WorkoutState> {
     }
 
     final profile = _ref.read(onboardingProvider).profile;
+    double? previousVolume;
     if (profile != null) {
       final uniqueKeys = sessionPrsByKey.keys.toList();
       for (final exerciseKey in uniqueKeys) {
@@ -450,9 +451,35 @@ class WorkoutController extends StateNotifier<WorkoutState> {
           recommendations[exerciseName] = 'Sync to get suggestions';
         }
       }
+
+      try {
+        final history =
+            await _ref.read(gymCoachRepositoryProvider).getWorkoutHistory(
+                  userId: profile.id,
+                  limit: 3,
+                );
+        if (history.isNotEmpty) {
+          if (history.first.sessionId == state.sessionId &&
+              history.length > 1) {
+            previousVolume = history[1].totalVolume;
+          } else {
+            previousVolume = history.first.totalVolume;
+          }
+        }
+      } catch (_) {
+        previousVolume = null;
+      }
     } else {
       recommendations['session'] = 'Sync to get suggestions';
     }
+
+    final coachHighlights = await _buildCoachHighlights(
+      totalSets: totalSets,
+      totalVolume: totalVolume,
+      previousVolume: previousVolume,
+      sessionPrs: sessionPrs,
+      recommendations: recommendations,
+    );
 
     return SessionSummary(
       sessionId: state.sessionId,
@@ -460,7 +487,134 @@ class WorkoutController extends StateNotifier<WorkoutState> {
       totalVolume: totalVolume,
       sessionPrs: sessionPrs,
       recommendations: recommendations,
+      coachHighlights: coachHighlights,
     );
+  }
+
+  Future<List<String>> _buildCoachHighlights({
+    required int totalSets,
+    required double totalVolume,
+    required double? previousVolume,
+    required Map<String, double> sessionPrs,
+    required Map<String, String> recommendations,
+  }) async {
+    final fallback = _fallbackCoachHighlights(
+      totalSets: totalSets,
+      totalVolume: totalVolume,
+      previousVolume: previousVolume,
+      sessionPrs: sessionPrs,
+      recommendations: recommendations,
+    );
+
+    final profile = _ref.read(onboardingProvider).profile;
+    if (profile == null) {
+      return fallback;
+    }
+
+    try {
+      final recommendationText = recommendations.entries
+          .take(3)
+          .map((entry) => '- ${entry.key}: ${entry.value}')
+          .join('\n');
+      final prompt = [
+        'Session stats:',
+        '- Total sets: $totalSets',
+        '- Total volume: ${totalVolume.toStringAsFixed(1)} kg',
+        if (previousVolume != null)
+          '- Previous volume: ${previousVolume.toStringAsFixed(1)} kg',
+        if (sessionPrs.isNotEmpty)
+          '- Session PRs: ${sessionPrs.entries.map((entry) => '${entry.key} ${entry.value.toStringAsFixed(1)}kg').join(', ')}',
+        if (recommendationText.isNotEmpty)
+          'Progression suggestions:\n$recommendationText',
+        '',
+        'Give exactly 3 short, actionable bullet points for next workout. Each bullet under 80 characters.',
+      ].join('\n');
+
+      final reply = await _ref.read(gymCoachRepositoryProvider).chatCoach(
+        userId: profile.id,
+        messages: [
+          {
+            'role': 'system',
+            'content':
+                'You are a concise strength coach. Respond with short actionable bullets only.',
+          },
+          {'role': 'user', 'content': prompt},
+        ],
+      );
+
+      final parsed = _parseCoachHighlights(reply);
+      if (parsed.isEmpty) {
+        return fallback;
+      }
+
+      final merged = <String>[];
+      final seen = <String>{};
+      for (final item in [...parsed, ...fallback]) {
+        final normalized = item.trim();
+        if (normalized.isEmpty) continue;
+        final key = normalized.toLowerCase();
+        if (seen.add(key)) {
+          merged.add(normalized);
+        }
+        if (merged.length >= 3) break;
+      }
+      return merged;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  List<String> _fallbackCoachHighlights({
+    required int totalSets,
+    required double totalVolume,
+    required double? previousVolume,
+    required Map<String, double> sessionPrs,
+    required Map<String, String> recommendations,
+  }) {
+    final result = <String>[];
+
+    if (previousVolume != null && previousVolume > 0) {
+      final deltaPct = ((totalVolume - previousVolume) / previousVolume) * 100;
+      final direction = deltaPct >= 0 ? 'up' : 'down';
+      result.add(
+        'Volume $direction ${deltaPct.abs().toStringAsFixed(1)}% vs previous workout.',
+      );
+    } else {
+      result.add(
+          'Logged $totalSets sets and ${totalVolume.toStringAsFixed(0)} kg total volume.');
+    }
+
+    if (sessionPrs.isNotEmpty) {
+      final best = sessionPrs.entries.first;
+      result.add(
+          'Top PR: ${best.key} reached ${best.value.toStringAsFixed(1)} kg.');
+    } else {
+      result.add('Keep technique sharp and add 1 rep before adding more load.');
+    }
+
+    final suggestion = recommendations.entries
+        .map((entry) => '${entry.key}: ${entry.value}')
+        .firstWhere(
+          (text) => text.trim().isNotEmpty,
+          orElse: () =>
+              'Start next session with your main compound movement first.',
+        );
+    result.add(suggestion);
+
+    return result.take(3).toList();
+  }
+
+  List<String> _parseCoachHighlights(String raw) {
+    final lines = raw
+        .split(RegExp(r'[\r\n]+'))
+        .map((line) =>
+            line.replaceFirst(RegExp(r'^\s*[-*0-9.)]+\s*'), '').trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    if (lines.isEmpty) {
+      return const [];
+    }
+    return lines.take(3).toList();
   }
 }
 
