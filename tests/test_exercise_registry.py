@@ -22,15 +22,36 @@ from app.utils.exercise_registry import (
 
 class TestIsGymExercise:
     @pytest.mark.parametrize("key", [
-        "squat", "back_squat", "front_squat", "goblet_squat",
+        # スクワット系
+        "squat", "back_squat", "front_squat", "goblet_squat", "hack_squat",
+        "bulgarian_split_squat", "pistol_squat", "low_bar_squat",
+        "lunge", "walking_lunge", "reverse_lunge", "step_up",
+        # ヒンジ系
         "deadlift", "romanian_deadlift", "rdl", "sumo_deadlift",
+        "trap_bar_deadlift", "hip_thrust", "glute_bridge", "kettlebell_swing",
+        "good_morning", "back_extension", "nordic_curl",
+        # ベンチ系
         "bench_press", "incline_bench_press", "dumbbell_bench_press",
-        "overhead_press", "ohp", "military_press",
-        "pull_up", "lat_pulldown", "barbell_row", "face_pull",
-        "biceps_curl", "hammer_curl", "triceps_pushdown", "skull_crusher",
-        "leg_press", "leg_curl", "calf_raise", "lunges",
-        "hip_thrust", "glute_bridge", "lateral_raise",
-        "plank", "ab_wheel",
+        "floor_press", "dips", "push_up", "cable_fly", "pec_deck",
+        # OHP系
+        "overhead_press", "ohp", "military_press", "arnold_press", "push_press",
+        # プル系
+        "pull_up", "chin_up", "lat_pulldown", "barbell_row", "face_pull",
+        "t_bar_row", "pendlay_row", "inverted_row", "shrug", "band_pull_apart",
+        # 肩アイソレーション
+        "lateral_raise", "front_raise", "upright_row", "y_raise",
+        # アーム
+        "biceps_curl", "hammer_curl", "preacher_curl", "ez_bar_curl",
+        "triceps_pushdown", "skull_crusher", "triceps_extension", "kickback",
+        "farmer_carry", "farmers_walk",
+        # 脚アイソレーション
+        "leg_press", "leg_curl", "leg_extension", "calf_raise",
+        "abductor_machine", "sissy_squat", "glute_kickback",
+        # コア
+        "plank", "ab_wheel", "pallof_press", "hanging_leg_raise",
+        "russian_twist", "toes_to_bar", "dead_bug",
+        # オリンピックリフト
+        "clean", "power_clean", "snatch", "clean_and_jerk", "overhead_squat",
     ])
     def test_gym_exercises_accepted(self, key):
         assert is_gym_exercise(key), f"'{key}' should be a supported gym exercise"
@@ -59,18 +80,34 @@ class TestGetExerciseCategory:
     @pytest.mark.parametrize("key,expected_category", [
         ("squat", "squat"),
         ("back_squat", "squat"),
+        ("bulgarian_split_squat", "squat"),
+        ("lunge", "squat"),
         ("deadlift", "deadlift"),
         ("rdl", "deadlift"),
+        ("hip_thrust", "deadlift"),
+        ("kettlebell_swing", "deadlift"),
         ("bench_press", "bench"),
         ("incline_bench_press", "bench"),
+        ("cable_fly", "bench"),
         ("overhead_press", "ohp"),
         ("ohp", "ohp"),
+        ("arnold_press", "ohp"),
         ("pull_up", "pull"),
         ("lat_pulldown", "pull"),
+        ("shrug", "pull"),
+        ("band_pull_apart", "pull"),
         ("biceps_curl", "arms"),
+        ("skull_crusher", "arms"),
+        ("farmer_carry", "arms"),
         ("leg_press", "legs"),
+        ("sissy_squat", "legs"),
         ("lateral_raise", "shoulder_isolation"),
+        ("y_raise", "shoulder_isolation"),
         ("plank", "core"),
+        ("toes_to_bar", "core"),
+        ("clean", "olympic"),
+        ("snatch", "olympic"),
+        ("overhead_squat", "olympic"),
     ])
     def test_category_mapping(self, key, expected_category):
         assert get_exercise_category(key) == expected_category
@@ -78,8 +115,8 @@ class TestGetExerciseCategory:
     def test_unknown_exercise_returns_none(self):
         assert get_exercise_category("golf_swing") is None
 
-    def test_registry_is_non_empty(self):
-        assert len(ALL_GYM_EXERCISES) > 50
+    def test_registry_has_sufficient_exercises(self):
+        assert len(ALL_GYM_EXERCISES) > 150
 
 
 # ---------------------------------------------------------------------------

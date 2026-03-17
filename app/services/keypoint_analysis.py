@@ -513,6 +513,7 @@ _ANALYSER_CATEGORY_MAP = {
     "shoulder_isolation": "isolation",
     "legs": "isolation",
     "core": "isolation",
+    "olympic": "squat",   # Olympic lifts share squat/hinge mechanics
 }
 
 
