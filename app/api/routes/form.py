@@ -11,7 +11,9 @@ from app.schemas.form import (
     FormTrendOut,
     FormTrendPoint,
 )
+from app.schemas.realtime import FormRealtimeIn, FormRealtimeOut, JointColor, BoneColor
 from app.services.form_analysis import analyze_form_diagnostics
+from app.services.keypoint_analysis import analyse_keypoints
 
 router = APIRouter(prefix="/form", tags=["form"])
 
@@ -159,4 +161,40 @@ def form_trend(
         points=points,
         avg_score=round(avg_score, 2),
         trend=trend,
+    )
+
+
+@router.post("/realtime", response_model=FormRealtimeOut)
+def realtime_form(payload: FormRealtimeIn, db: Session = Depends(get_db)):
+    """
+    Frame-by-frame keypoint analysis for real-time skeleton overlay.
+
+    The client (mobile app) runs on-device pose estimation (MoveNet / BlazePose),
+    sends the 2-D keypoints for the current frame, and receives per-joint and
+    per-bone colour annotations:
+      - "green"  : correct form
+      - "yellow" : minor deviation
+      - "red"    : significant error / injury risk
+
+    The endpoint is intentionally lightweight (no DB write) so it can be called
+    at ~15-30 fps without overwhelming the database.
+    """
+    user = db.query(models.User).filter(models.User.id == payload.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Convert Pydantic Keypoint objects to plain dicts for the service layer
+    kp_dicts = {
+        name: {"x": kp.x, "y": kp.y, "confidence": kp.confidence}
+        for name, kp in payload.keypoints.items()
+    }
+
+    result = analyse_keypoints(kp_dicts, payload.exercise_key, view=payload.view)
+
+    return FormRealtimeOut(
+        joint_colors=[JointColor(**jc) for jc in result["joint_colors"]],
+        bone_colors=[BoneColor(**bc) for bc in result["bone_colors"]],
+        issues=result["issues"],
+        feedback=result["feedback"],
+        overall_score=result["overall_score"],
     )
