@@ -85,13 +85,18 @@ _ANALYSER_CATEGORY_MAP = {
     "deadlift": "deadlift",
     "bench": "bench",
     "ohp": "ohp",
+    "pull": "pull",
+    "arms": "isolation",
+    "shoulder_isolation": "isolation",
+    "legs": "isolation",
+    "core": "isolation",
 }
 
 
 def _classify_exercise(exercise_key: str) -> str:
     """Return the analyser category for *exercise_key* (gym exercises only)."""
     registry_cat = _registry_category(exercise_key.lower().strip())
-    return _ANALYSER_CATEGORY_MAP.get(registry_cat or "", "general")
+    return _ANALYSER_CATEGORY_MAP.get(registry_cat or "", "isolation")
 
 
 def _detect_issues(
@@ -150,10 +155,15 @@ def _detect_issues(
         if tempo_score < 70:
             issues.append("tempo_inconsistent")
 
-    else:
-        # Generic fallback
+    elif exercise_category == "pull":
         if torso_angle_score < 70:
-            issues.append("forward_lean")
+            issues.append("rounded_back")
+        if symmetry_score < 70:
+            issues.append("pull_asymmetry")
+        if tempo_score < 70:
+            issues.append("tempo_inconsistent")
+
+    else:  # isolation (arms, legs, shoulder isolation, core)
         if symmetry_score < 70:
             issues.append("asymmetry_instability")
         if tempo_score < 70:
@@ -176,10 +186,7 @@ def _feedback_for_issues(issues: List[str], exercise_category: str) -> str:
     if "shallow_depth" in issues:
         messages.append("Your squat depth is slightly shallow. Try going 2-3 inches deeper while keeping tension.")
     if "forward_lean" in issues:
-        if exercise_category == "squat":
-            messages.append("Your torso is leaning forward. Brace harder and keep the chest more upright through the ascent.")
-        else:
-            messages.append("Maintain a neutral spine throughout the movement.")
+        messages.append("Your torso is leaning forward. Brace harder and keep the chest more upright through the ascent.")
     if "asymmetry_instability" in issues:
         messages.append("Left-right balance is off. Reduce load 5-10% and focus on even pressure through both feet.")
     if "tempo_inconsistent" in issues:
@@ -203,14 +210,18 @@ def _feedback_for_issues(issues: List[str], exercise_category: str) -> str:
     if "excessive_layback" in issues:
         messages.append("You're leaning back too much. Brace your core tightly and keep the bar path vertical.")
 
+    # Pull cues
+    if "pull_asymmetry" in issues:
+        messages.append("Both sides aren't pulling equally. Focus on initiating with the lat on the weaker side.")
+
     return " ".join(messages)
 
 
 def analyze_form_diagnostics(
     diagnostics: Dict[str, Any],
-    exercise_key: str = "",
+    exercise_key: str,
 ) -> Dict[str, Any]:
-    exercise_category = _classify_exercise(exercise_key) if exercise_key else "general"
+    exercise_category = _classify_exercise(exercise_key)
 
     quality = _to_float(diagnostics.get("quality")) or 0.0
     jitter = _to_float(diagnostics.get("pose_jitter"))

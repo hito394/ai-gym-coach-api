@@ -408,26 +408,91 @@ def _analyse_ohp(
     return issues
 
 
-def _analyse_general(
+def _analyse_pull(
     kp: Dict[str, Any],
     view: str,
     cmap: _ColorMap,
 ) -> List[str]:
+    """Pull exercises: lat pulldown, rows, pull-ups, face pulls."""
     issues: List[str] = []
 
     l_shoulder = _xy(kp, "left_shoulder")
     r_shoulder = _xy(kp, "right_shoulder")
     l_hip = _xy(kp, "left_hip")
     r_hip = _xy(kp, "right_hip")
+    l_elbow = _xy(kp, "left_elbow")
+    r_elbow = _xy(kp, "right_elbow")
 
     shoulder_mid = _mid(l_shoulder, r_shoulder)
     hip_mid = _mid(l_hip, r_hip)
 
+    # Back rounding during rows – torso should stay relatively upright
     lean = _torso_angle(shoulder_mid, hip_mid)
-    if lean is not None and lean > 45:
-        issues.append("forward_lean")
-        cmap.mark_bone("left_shoulder", "left_hip", "yellow")
-        cmap.mark_bone("right_shoulder", "right_hip", "yellow")
+    if lean is not None and lean > 50:
+        issues.append("rounded_back")
+        cmap.mark_bone("left_shoulder", "left_hip", "red")
+        cmap.mark_bone("right_shoulder", "right_hip", "red")
+        for j in ["left_shoulder", "right_shoulder"]:
+            cmap.mark_joint(j, "red", "back rounding – retract scapulae")
+
+    # Elbow symmetry (elbows should reach same height)
+    if l_elbow is not None and r_elbow is not None:
+        if abs(l_elbow[1] - r_elbow[1]) > 0.06:
+            issues.append("pull_asymmetry")
+            higher = "left_elbow" if l_elbow[1] < r_elbow[1] else "right_elbow"
+            cmap.mark_joint(higher, "yellow", "elbows not pulling evenly")
+
+    # Shoulder asymmetry
+    if view == "front" and l_shoulder is not None and r_shoulder is not None:
+        if abs(l_shoulder[1] - r_shoulder[1]) > 0.05:
+            issues.append("shoulder_asymmetry")
+            higher = "left_shoulder" if l_shoulder[1] < r_shoulder[1] else "right_shoulder"
+            cmap.mark_joint(higher, "yellow", "one shoulder shrugging")
+
+    return issues
+
+
+def _analyse_isolation(
+    kp: Dict[str, Any],
+    view: str,
+    cmap: _ColorMap,
+) -> List[str]:
+    """
+    Arm, shoulder isolation, leg isolation, and core exercises.
+    Checks bilateral symmetry and shoulder/hip stability.
+    """
+    issues: List[str] = []
+
+    l_shoulder = _xy(kp, "left_shoulder")
+    r_shoulder = _xy(kp, "right_shoulder")
+    l_elbow = _xy(kp, "left_elbow")
+    r_elbow = _xy(kp, "right_elbow")
+    l_wrist = _xy(kp, "left_wrist")
+    r_wrist = _xy(kp, "right_wrist")
+    l_hip = _xy(kp, "left_hip")
+    r_hip = _xy(kp, "right_hip")
+
+    # Shoulder stability – they should not rise during arm isolation
+    if l_shoulder is not None and r_shoulder is not None:
+        if abs(l_shoulder[1] - r_shoulder[1]) > 0.05:
+            issues.append("shoulder_asymmetry")
+            higher = "left_shoulder" if l_shoulder[1] < r_shoulder[1] else "right_shoulder"
+            cmap.mark_joint(higher, "yellow", "shoulder rising – reduce momentum")
+
+    # Elbow drift (curls/extensions: elbow should stay fixed at the side)
+    if view == "front":
+        if l_elbow is not None and r_elbow is not None:
+            if abs(l_elbow[1] - r_elbow[1]) > 0.07:
+                issues.append("asymmetry_instability")
+                cmap.mark_joint("left_elbow", "yellow", "uneven elbow height")
+                cmap.mark_joint("right_elbow", "yellow", "uneven elbow height")
+
+    # Hip rocking (using body English – hips shift during arm work)
+    if l_hip is not None and r_hip is not None:
+        if abs(l_hip[1] - r_hip[1]) > 0.05:
+            issues.append("hip_rock")
+            cmap.mark_joint("left_hip", "yellow", "hips rocking – use less weight")
+            cmap.mark_joint("right_hip", "yellow", "hips rocking – use less weight")
 
     return issues
 
@@ -443,13 +508,18 @@ _ANALYSER_CATEGORY_MAP = {
     "deadlift": "deadlift",
     "bench": "bench",
     "ohp": "ohp",
+    "pull": "pull",
+    "arms": "isolation",
+    "shoulder_isolation": "isolation",
+    "legs": "isolation",
+    "core": "isolation",
 }
 
 
 def _classify(exercise_key: str) -> str:
-    """Map an exercise key to an analyser category."""
+    """Map a gym exercise key to an analyser category."""
     registry_cat = _registry_category(exercise_key.lower().strip())
-    return _ANALYSER_CATEGORY_MAP.get(registry_cat or "", "general")
+    return _ANALYSER_CATEGORY_MAP.get(registry_cat or "", "isolation")
 
 
 # ---------------------------------------------------------------------------
@@ -457,20 +527,28 @@ def _classify(exercise_key: str) -> str:
 # ---------------------------------------------------------------------------
 
 _ISSUE_FEEDBACK: Dict[str, str] = {
+    # Squat
     "excessive_forward_lean": "Back is leaning too far forward. Brace your core, keep chest up.",
     "forward_lean": "Slight forward lean detected. Focus on staying upright.",
     "shallow_depth": "Hips are above knees. Try to squat deeper.",
     "left_knee_valgus": "Left knee is caving in. Push your left knee out over your toes.",
     "right_knee_valgus": "Right knee is caving in. Push your right knee out over your toes.",
+    # Deadlift
     "rounded_back": "Back is rounding – injury risk! Lock your lats and maintain a neutral spine.",
     "incomplete_lockout": "Hips not fully locked out. Stand tall, squeeze glutes at the top.",
-    "shoulder_asymmetry": "Shoulders are uneven. Ensure both sides are engaged equally.",
+    # Bench
     "excessive_elbow_flare": "Elbows are flaring too wide. Tuck them 45-60° to protect your rotator cuff.",
     "wrist_misalignment": "Wrists are drifting from elbow line. Keep wrists stacked over elbows.",
     "uneven_press": "Press is uneven. Focus on driving both hands at the same speed.",
+    # OHP
     "excessive_layback": "You're leaning back too much. Brace your core to prevent lower-back strain.",
     "elbow_flare_ohp": "Elbows are drifting back. Keep them slightly in front of the bar.",
+    # Pull
+    "pull_asymmetry": "Elbows aren't pulling evenly. Initiate with the weaker side's lat.",
+    # Shared / isolation
+    "shoulder_asymmetry": "Shoulders are uneven. Ensure both sides are engaged equally.",
     "asymmetry_instability": "Left-right asymmetry detected. Reduce load and focus on even engagement.",
+    "hip_rock": "Hips are rocking. Reduce weight and keep your core braced throughout.",
 }
 
 
@@ -489,6 +567,7 @@ def _score_from_issues(issues: List[str]) -> float:
     yellow_issues = {
         "forward_lean", "shallow_depth", "incomplete_lockout", "shoulder_asymmetry",
         "wrist_misalignment", "uneven_press", "elbow_flare_ohp", "asymmetry_instability",
+        "pull_asymmetry", "hip_rock",
     }
     score = 100.0
     for issue in issues:
@@ -525,8 +604,10 @@ def analyse_keypoints(
         issues = _analyse_bench(keypoints, view, cmap)
     elif exercise_cat == "ohp":
         issues = _analyse_ohp(keypoints, view, cmap)
+    elif exercise_cat == "pull":
+        issues = _analyse_pull(keypoints, view, cmap)
     else:
-        issues = _analyse_general(keypoints, view, cmap)
+        issues = _analyse_isolation(keypoints, view, cmap)
 
     # Collect which joints are actually present in this frame
     present = [j for j in ALL_JOINTS if _xy(keypoints, j) is not None]
