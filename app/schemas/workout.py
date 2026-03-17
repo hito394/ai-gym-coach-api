@@ -116,3 +116,63 @@ class ProgressSummaryOut(BaseModel):
     one_rm_prs: Dict[str, float]
     strength_index: float
     strength_index_by_lift: Dict[str, float]
+
+
+# ---------------------------------------------------------------------------
+# AI menu generation
+# ---------------------------------------------------------------------------
+
+class GenerateAIMenuIn(BaseModel):
+    profile_id: int
+    split: str = Field(..., pattern="^(ppl|upper_lower|full_body)$")
+    week_index: int = Field(default=1, ge=1)
+    block_index: int = Field(default=1, ge=1)
+    readiness_score: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Session management
+# ---------------------------------------------------------------------------
+
+class SessionStartIn(BaseModel):
+    user_id: int
+    plan_id: Optional[int] = None          # link to a WorkoutPlan if available
+    notes: Optional[str] = None
+
+
+class SessionLogSetIn(BaseModel):
+    exercise_key: str
+    exercise_name: Optional[str] = None
+    reps: int = Field(..., ge=1)
+    weight: float = Field(..., ge=0)       # 0 = bodyweight
+    rpe: Optional[float] = Field(default=None, ge=1.0, le=10.0)
+    rest_seconds: Optional[int] = None
+
+
+class SessionSetOut(BaseModel):
+    id: int
+    exercise: str
+    exercise_key: str
+    reps: int
+    weight: float
+    rpe: Optional[float] = None
+    rest_seconds: Optional[int] = None
+    performed_at: str
+
+
+class SessionOut(BaseModel):
+    id: int
+    session_key: str
+    user_id: int
+    plan_id: Optional[int] = None
+    notes: Optional[str] = None
+    started_at: str
+    finished_at: Optional[str] = None
+    is_active: bool
+    total_sets: int
+    total_volume: float
+    sets: List[SessionSetOut] = []
+
+
+class SessionFinishIn(BaseModel):
+    notes: Optional[str] = None

@@ -151,3 +151,21 @@ class FormAchievement(Base):
     score = Column(Float, nullable=True)
     meta = Column(JSON, nullable=True)                  # extra context
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WorkoutSession(Base):
+    """
+    A single training session.  Sets logged during the session are
+    linked via SetLog.session_id == WorkoutSession.session_key.
+    """
+    __tablename__ = "workout_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    session_key = Column(String, unique=True, nullable=False, index=True)
+    plan_id = Column(Integer, ForeignKey("workout_plans.id"), nullable=True)
+    notes = Column(String, nullable=True)
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    total_sets = Column(Integer, default=0)
+    total_volume = Column(Float, default=0.0)          # kg × reps
