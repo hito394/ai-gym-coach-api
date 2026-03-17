@@ -73,26 +73,148 @@ def _tempo_score(jitter: float | None, rep_issues: List[str]) -> float:
     return _clamp(score)
 
 
-def _feedback_for_issues(issues: List[str]) -> str:
+# ---------------------------------------------------------------------------
+# Exercise-specific issue detection
+# ---------------------------------------------------------------------------
+
+_SQUAT_KEYS = {"squat", "back_squat", "front_squat", "goblet_squat", "hack_squat"}
+_BENCH_KEYS = {"bench_press", "bench", "incline_bench_press", "decline_bench_press", "close_grip_bench_press"}
+_DEADLIFT_KEYS = {"deadlift", "romanian_deadlift", "rdl", "sumo_deadlift", "trap_bar_deadlift"}
+_OHP_KEYS = {"overhead_press", "ohp", "shoulder_press", "military_press", "seated_overhead_press"}
+
+
+def _classify_exercise(exercise_key: str) -> str:
+    """Return a broad exercise category for exercise-specific scoring."""
+    key = exercise_key.lower()
+    if key in _SQUAT_KEYS or "squat" in key:
+        return "squat"
+    if key in _BENCH_KEYS or "bench" in key:
+        return "bench"
+    if key in _DEADLIFT_KEYS or "deadlift" in key or "rdl" in key:
+        return "deadlift"
+    if key in _OHP_KEYS or "overhead" in key or "shoulder_press" in key:
+        return "ohp"
+    return "general"
+
+
+def _detect_issues(
+    exercise_category: str,
+    depth_score: float,
+    torso_angle_score: float,
+    symmetry_score: float,
+    tempo_score: float,
+    quality: float,
+    diagnostics: Dict[str, Any],
+) -> List[str]:
+    issues: List[str] = []
+
+    if quality < 70:
+        issues.append("low_capture_quality")
+
+    if exercise_category == "squat":
+        if depth_score < 70:
+            issues.append("shallow_depth")
+        if torso_angle_score < 70:
+            issues.append("forward_lean")
+        if symmetry_score < 70:
+            issues.append("asymmetry_instability")
+        if tempo_score < 70:
+            issues.append("tempo_inconsistent")
+
+    elif exercise_category == "bench":
+        # For bench, torso stays flat – we repurpose torso_angle for wrist/elbow flare
+        elbow_flare = _to_float(diagnostics.get("elbow_flare_angle"))
+        if elbow_flare is not None and elbow_flare > 75:
+            issues.append("excessive_elbow_flare")
+        if symmetry_score < 70:
+            issues.append("uneven_press")
+        if tempo_score < 70:
+            issues.append("tempo_inconsistent")
+        bar_path_deviation = _to_float(diagnostics.get("bar_path_deviation"))
+        if bar_path_deviation is not None and bar_path_deviation > 0.05:
+            issues.append("bar_path_inconsistent")
+
+    elif exercise_category == "deadlift":
+        if torso_angle_score < 70:
+            issues.append("rounded_back")
+        if symmetry_score < 70:
+            issues.append("asymmetry_instability")
+        if tempo_score < 70:
+            issues.append("tempo_inconsistent")
+        lockout = _to_float(diagnostics.get("hip_lockout_angle"))
+        if lockout is not None and lockout < 160:
+            issues.append("incomplete_lockout")
+
+    elif exercise_category == "ohp":
+        if torso_angle_score < 70:
+            issues.append("excessive_layback")
+        if symmetry_score < 70:
+            issues.append("asymmetry_instability")
+        if tempo_score < 70:
+            issues.append("tempo_inconsistent")
+
+    else:
+        # Generic fallback
+        if torso_angle_score < 70:
+            issues.append("forward_lean")
+        if symmetry_score < 70:
+            issues.append("asymmetry_instability")
+        if tempo_score < 70:
+            issues.append("tempo_inconsistent")
+
+    return issues
+
+
+def _feedback_for_issues(issues: List[str], exercise_category: str) -> str:
     if not issues:
         return "Your form looks stable. Keep bracing, maintain tempo, and progress load gradually."
 
     messages: List[str] = []
+
+    # Shared
+    if "low_capture_quality" in issues:
+        messages.append("Camera quality is limiting analysis. Use side view, full body framing, and stronger lighting.")
+
+    # Squat cues
     if "shallow_depth" in issues:
         messages.append("Your squat depth is slightly shallow. Try going 2-3 inches deeper while keeping tension.")
     if "forward_lean" in issues:
-        messages.append("Your torso is leaning forward. Brace harder and keep the chest more upright through the ascent.")
+        if exercise_category == "squat":
+            messages.append("Your torso is leaning forward. Brace harder and keep the chest more upright through the ascent.")
+        else:
+            messages.append("Maintain a neutral spine throughout the movement.")
     if "asymmetry_instability" in issues:
         messages.append("Left-right balance is off. Reduce load 5-10% and focus on even pressure through both feet.")
     if "tempo_inconsistent" in issues:
-        messages.append("Tempo is inconsistent. Use a 3-second controlled descent and a smooth, powerful ascent.")
-    if "low_capture_quality" in issues:
-        messages.append("Camera quality is limiting analysis. Use side view, full body framing, and stronger lighting.")
+        messages.append("Tempo is inconsistent. Use a controlled descent and a smooth, powerful ascent.")
+
+    # Bench cues
+    if "excessive_elbow_flare" in issues:
+        messages.append("Elbows are flaring too wide. Tuck them 45-60° to protect your shoulders and increase power transfer.")
+    if "uneven_press" in issues:
+        messages.append("One side is pressing more than the other. Focus on driving both hands evenly and check grip width.")
+    if "bar_path_inconsistent" in issues:
+        messages.append("Bar path is drifting. Keep the bar over your lower chest and drive it in a slight arc toward the rack.")
+
+    # Deadlift cues
+    if "rounded_back" in issues:
+        messages.append("Your back is rounding. Set your lats before pulling, brace 360°, and keep a neutral spine throughout.")
+    if "incomplete_lockout" in issues:
+        messages.append("Hips aren't fully locking out at the top. Drive hips through and squeeze glutes at lockout.")
+
+    # OHP cues
+    if "excessive_layback" in issues:
+        messages.append("You're leaning back too much. Brace your core tightly and keep the bar path vertical.")
 
     return " ".join(messages)
 
 
-def analyze_form_diagnostics(diagnostics: Dict[str, Any]) -> Dict[str, Any]:
+def analyze_form_diagnostics(
+    diagnostics: Dict[str, Any],
+    exercise_key: str = "",
+) -> Dict[str, Any]:
+    exercise_category = _classify_exercise(exercise_key) if exercise_key else "general"
+
     quality = _to_float(diagnostics.get("quality")) or 0.0
     jitter = _to_float(diagnostics.get("pose_jitter"))
     depth_norm = _to_float(diagnostics.get("depth_norm"))
@@ -125,19 +247,17 @@ def analyze_form_diagnostics(diagnostics: Dict[str, Any]) -> Dict[str, Any]:
         + (0.05 * bar_path_score)
     )
 
-    issues: List[str] = []
-    if depth_score < 70:
-        issues.append("shallow_depth")
-    if torso_angle_score < 70:
-        issues.append("forward_lean")
-    if symmetry_score < 70:
-        issues.append("asymmetry_instability")
-    if tempo_score < 70:
-        issues.append("tempo_inconsistent")
-    if quality < 70:
-        issues.append("low_capture_quality")
+    issues = _detect_issues(
+        exercise_category,
+        depth_score,
+        torso_angle_score,
+        symmetry_score,
+        tempo_score,
+        quality,
+        diagnostics,
+    )
 
-    feedback = _feedback_for_issues(issues)
+    feedback = _feedback_for_issues(issues, exercise_category)
 
     return {
         "overall_score": round(overall_score, 2),
