@@ -2,6 +2,20 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, field_validator
 
 from app.utils.exercise_key import normalize_exercise_key
+from app.utils.exercise_registry import is_gym_exercise
+
+
+def _validate_gym_exercise_key(v: str) -> str:
+    """Normalise and assert the key is a recognised gym exercise."""
+    key = normalize_exercise_key(v)
+    if not key:
+        raise ValueError("exercise_key must not be empty")
+    if not is_gym_exercise(key):
+        raise ValueError(
+            f"'{key}' is not a supported gym exercise. "
+            "Only weight-training exercises are accepted."
+        )
+    return key
 
 
 class FormAnalyzeIn(BaseModel):
@@ -11,11 +25,8 @@ class FormAnalyzeIn(BaseModel):
 
     @field_validator("exercise_key")
     @classmethod
-    def normalize_key(cls, v: str) -> str:
-        key = normalize_exercise_key(v)
-        if not key:
-            raise ValueError("exercise_key must not be empty")
-        return key
+    def normalize_and_validate_key(cls, v: str) -> str:
+        return _validate_gym_exercise_key(v)
 
 
 class FormAnalyzeOut(BaseModel):

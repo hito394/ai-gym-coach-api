@@ -433,26 +433,23 @@ def _analyse_general(
 
 
 # ---------------------------------------------------------------------------
-# Exercise classifier (mirrors form_analysis.py)
+# Exercise classifier – delegates to the shared registry
 # ---------------------------------------------------------------------------
 
-_SQUAT_KEYS = {"squat", "back_squat", "front_squat", "goblet_squat", "hack_squat"}
-_BENCH_KEYS = {"bench_press", "bench", "incline_bench_press", "decline_bench_press", "close_grip_bench_press"}
-_DEADLIFT_KEYS = {"deadlift", "romanian_deadlift", "rdl", "sumo_deadlift", "trap_bar_deadlift"}
-_OHP_KEYS = {"overhead_press", "ohp", "shoulder_press", "military_press", "seated_overhead_press"}
+from app.utils.exercise_registry import get_exercise_category as _registry_category
+
+_ANALYSER_CATEGORY_MAP = {
+    "squat": "squat",
+    "deadlift": "deadlift",
+    "bench": "bench",
+    "ohp": "ohp",
+}
 
 
 def _classify(exercise_key: str) -> str:
-    key = exercise_key.lower()
-    if key in _SQUAT_KEYS or "squat" in key:
-        return "squat"
-    if key in _BENCH_KEYS or "bench" in key:
-        return "bench"
-    if key in _DEADLIFT_KEYS or "deadlift" in key or "rdl" in key:
-        return "deadlift"
-    if key in _OHP_KEYS or "overhead" in key or "shoulder_press" in key:
-        return "ohp"
-    return "general"
+    """Map an exercise key to an analyser category."""
+    registry_cat = _registry_category(exercise_key.lower().strip())
+    return _ANALYSER_CATEGORY_MAP.get(registry_cat or "", "general")
 
 
 # ---------------------------------------------------------------------------

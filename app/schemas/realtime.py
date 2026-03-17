@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, field_validator
 
 from app.utils.exercise_key import normalize_exercise_key
+from app.utils.exercise_registry import is_gym_exercise
 
 
 class Keypoint(BaseModel):
@@ -36,10 +37,15 @@ class FormRealtimeIn(BaseModel):
 
     @field_validator("exercise_key")
     @classmethod
-    def normalize_key(cls, v: str) -> str:
+    def normalize_and_validate_key(cls, v: str) -> str:
         key = normalize_exercise_key(v)
         if not key:
             raise ValueError("exercise_key must not be empty")
+        if not is_gym_exercise(key):
+            raise ValueError(
+                f"'{key}' is not a supported gym exercise. "
+                "Only weight-training exercises are accepted."
+            )
         return key
 
     @field_validator("view")
