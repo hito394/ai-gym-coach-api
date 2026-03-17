@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.schemas.user import (
@@ -11,6 +11,23 @@ from app.db import models
 from datetime import datetime
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/{user_id}/profile", response_model=UserProfileOut)
+def get_profile(user_id: int, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserProfileOut(
+        id=user.id,
+        age=user.age,
+        weight_kg=user.weight_kg,
+        height_cm=user.height_cm,
+        experience_level=user.experience_level,
+        goal=user.goal,
+        training_days=user.training_days,
+        equipment=user.equipment or [],
+    )
 
 
 @router.post("/profile", response_model=UserProfileOut)
@@ -44,8 +61,6 @@ def create_profile(payload: UserProfileIn, db: Session = Depends(get_db)):
 def log_body_weight(user_id: int, payload: BodyWeightLogIn, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="User not found")
 
     measured_at = payload.measured_at or datetime.utcnow()
@@ -71,8 +86,6 @@ def log_body_weight(user_id: int, payload: BodyWeightLogIn, db: Session = Depend
 def get_body_weight_logs(user_id: int, limit: int = 30, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="User not found")
 
     rows = (

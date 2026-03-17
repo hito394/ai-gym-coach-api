@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.core.config import get_settings
 from app.db import models
 from app.schemas.form import (
     FormAnalyzeIn,
@@ -14,17 +15,53 @@ from app.schemas.form import (
 from app.schemas.realtime import FormRealtimeIn, FormRealtimeOut, JointColor, BoneColor
 from app.services.form_analysis import analyze_form_diagnostics
 from app.services.keypoint_analysis import analyse_keypoints
+from app.services.ai_form_feedback import generate_ai_feedback
 
 router = APIRouter(prefix="/form", tags=["form"])
 
 
 @router.post("/analyze", response_model=FormAnalyzeOut)
 def analyze_form(payload: FormAnalyzeIn, db: Session = Depends(get_db)):
+    settings = get_settings()
     user = db.query(models.User).filter(models.User.id == payload.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     result = analyze_form_diagnostics(payload.diagnostics, exercise_key=payload.exercise_key)
+
+    # Fetch historical trend for AI context (last 5 sessions)
+    trend_sessions = (
+        db.query(models.FormAnalysisSession)
+        .filter(
+            models.FormAnalysisSession.user_id == payload.user_id,
+            models.FormAnalysisSession.exercise_key == payload.exercise_key,
+        )
+        .order_by(models.FormAnalysisSession.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    trend: str | None = None
+    if len(trend_sessions) >= 2:
+        scores_desc = [s.overall_score for s in trend_sessions]
+        diff = scores_desc[0] - scores_desc[-1]
+        if diff >= 3.0:
+            trend = "improving"
+        elif diff <= -3.0:
+            trend = "declining"
+        else:
+            trend = "stable"
+
+    # Try AI-powered personalised feedback; fall back to rule-based feedback
+    ai_feedback = generate_ai_feedback(
+        exercise_key=payload.exercise_key,
+        scores=result,
+        issues=result["issues"],
+        experience_level=user.experience_level,
+        goal=user.goal,
+        trend=trend,
+        api_key=settings.anthropic_api_key or None,
+    )
+    feedback = ai_feedback if ai_feedback else result["feedback"]
 
     record = models.FormAnalysisSession(
         user_id=payload.user_id,
@@ -39,7 +76,7 @@ def analyze_form(payload: FormAnalyzeIn, db: Session = Depends(get_db)):
         overall_score=result["overall_score"],
         issues=result["issues"],
         diagnostics=payload.diagnostics,
-        feedback=result["feedback"],
+        feedback=feedback,
     )
     db.add(record)
     db.commit()
@@ -52,7 +89,7 @@ def analyze_form(payload: FormAnalyzeIn, db: Session = Depends(get_db)):
         tempo_score=result["tempo_score"],
         bar_path_score=result["bar_path_score"],
         issues=result["issues"],
-        feedback=result["feedback"],
+        feedback=feedback,
         diagnostics=payload.diagnostics,
         model_name="movenet",
         model_version="mvp-rules-v1",

@@ -13,8 +13,15 @@ class UserProfileIn(BaseModel):
     equipment: List[str]
 
 
-class UserProfileOut(UserProfileIn):
+class UserProfileOut(BaseModel):
     id: int
+    age: Optional[int] = None
+    weight_kg: Optional[float] = None
+    height_cm: Optional[float] = None
+    experience_level: Optional[str] = None
+    goal: Optional[str] = None
+    training_days: Optional[int] = None
+    equipment: Optional[List[str]] = None
 
 
 class UserPreferenceIn(BaseModel):
