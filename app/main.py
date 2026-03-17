@@ -13,6 +13,7 @@ from app.api.routes.progression import router as progression_router
 from app.api.routes.analytics import router as analytics_router
 from app.api.routes.form import router as form_router
 from app.api.routes.exercises import router as exercises_router
+from app.api.routes.dashboard import router as dashboard_router
 from app.db.session import engine, SessionLocal
 from app.db.base import Base
 from app.utils.exercise_key import ensure_exercise_key_columns
@@ -61,6 +62,7 @@ app.include_router(progression_router, prefix=settings.api_prefix)
 app.include_router(analytics_router, prefix=settings.api_prefix)
 app.include_router(form_router, prefix=settings.api_prefix)
 app.include_router(exercises_router, prefix=settings.api_prefix)
+app.include_router(dashboard_router, prefix=settings.api_prefix)
 
 
 # ---------------------------------------------------------------------------

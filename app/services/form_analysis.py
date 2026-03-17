@@ -248,12 +248,22 @@ def analyze_form_diagnostics(
     tempo_score = _tempo_score(jitter, rep_issues)
     bar_path_score = _clamp((0.4 * torso_angle_score) + (0.4 * symmetry_score) + (0.2 * quality))
 
+    # Exercise-category-specific overall weighting
+    _OVERALL_WEIGHTS = {
+        "squat":     (0.30, 0.25, 0.20, 0.20, 0.05),  # depth matters most
+        "deadlift":  (0.20, 0.40, 0.20, 0.15, 0.05),  # torso angle is safety-critical
+        "bench":     (0.15, 0.20, 0.30, 0.25, 0.10),  # symmetry & tempo key
+        "ohp":       (0.15, 0.35, 0.25, 0.20, 0.05),  # torso critical
+        "pull":      (0.15, 0.25, 0.30, 0.25, 0.05),  # symmetry & tempo key
+        "isolation": (0.10, 0.15, 0.35, 0.35, 0.05),  # symmetry & tempo dominate
+    }
+    w_d, w_t, w_s, w_tm, w_b = _OVERALL_WEIGHTS.get(exercise_category, (0.30, 0.25, 0.20, 0.20, 0.05))
     overall_score = _clamp(
-        (0.30 * depth_score)
-        + (0.25 * torso_angle_score)
-        + (0.20 * symmetry_score)
-        + (0.20 * tempo_score)
-        + (0.05 * bar_path_score)
+        (w_d  * depth_score)
+        + (w_t  * torso_angle_score)
+        + (w_s  * symmetry_score)
+        + (w_tm * tempo_score)
+        + (w_b  * bar_path_score)
     )
 
     issues = _detect_issues(

@@ -123,3 +123,31 @@ class FormAnalysisSession(Base):
     diagnostics = Column(JSON, nullable=True)
     feedback = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FormPersonalBest(Base):
+    """Tracks each user's best overall form score per exercise."""
+    __tablename__ = "form_personal_bests"
+    __table_args__ = (
+        UniqueConstraint("user_id", "exercise_key", name="uq_form_pb_user_exercise"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    exercise_key = Column(String, nullable=False, index=True)
+    best_score = Column(Float, nullable=False)
+    session_id = Column(Integer, ForeignKey("form_analysis_sessions.id"), nullable=True)
+    achieved_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FormAchievement(Base):
+    """Milestone events surfaced in the user dashboard."""
+    __tablename__ = "form_achievements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    achievement_type = Column(String, nullable=False)   # e.g. "first_90", "personal_best"
+    exercise_key = Column(String, nullable=True)
+    score = Column(Float, nullable=True)
+    meta = Column(JSON, nullable=True)                  # extra context
+    created_at = Column(DateTime, default=datetime.utcnow)

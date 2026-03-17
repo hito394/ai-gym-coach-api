@@ -16,6 +16,7 @@ from app.schemas.realtime import FormRealtimeIn, FormRealtimeOut, JointColor, Bo
 from app.services.form_analysis import analyze_form_diagnostics
 from app.services.keypoint_analysis import analyse_keypoints
 from app.services.ai_form_feedback import generate_ai_feedback
+from app.services.achievements import process_session, ACHIEVEMENT_META
 
 router = APIRouter(prefix="/form", tags=["form"])
 
@@ -79,6 +80,10 @@ def analyze_form(payload: FormAnalyzeIn, db: Session = Depends(get_db)):
         feedback=feedback,
     )
     db.add(record)
+    db.flush()  # get record.id before achievement processing
+
+    # Detect milestones + update personal best
+    process_session(db, record)
     db.commit()
 
     return FormAnalyzeOut(
@@ -199,6 +204,38 @@ def form_trend(
         avg_score=round(avg_score, 2),
         trend=trend,
     )
+
+
+@router.get("/achievements/{user_id}", summary="List user form achievements")
+def form_achievements(
+    user_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    rows = (
+        db.query(models.FormAchievement)
+        .filter(models.FormAchievement.user_id == user_id)
+        .order_by(models.FormAchievement.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "user_id": user_id,
+        "achievements": [
+            {
+                "type":         a.achievement_type,
+                "exercise_key": a.exercise_key,
+                "score":        a.score,
+                "earned_at":    a.created_at.isoformat() if a.created_at else None,
+                **ACHIEVEMENT_META.get(a.achievement_type, {}),
+            }
+            for a in rows
+        ],
+    }
 
 
 @router.post("/realtime", response_model=FormRealtimeOut)
