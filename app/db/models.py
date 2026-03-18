@@ -9,6 +9,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=True)
+    password_hash = Column(String, nullable=True)
     age = Column(Integer, nullable=True)
     weight_kg = Column(Float, nullable=True)
     height_cm = Column(Float, nullable=True)
@@ -79,6 +80,7 @@ class SetLogMeta(Base):
     set_log_id = Column(Integer, ForeignKey("set_logs.id"), unique=True, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     session_id = Column(String, nullable=True, index=True)
+    form_session_id = Column(Integer, ForeignKey("form_analysis_sessions.id"), nullable=True, index=True)
     rest_seconds = Column(Integer, nullable=True)
     logged_at = Column(DateTime, default=datetime.utcnow)
 

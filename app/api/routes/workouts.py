@@ -405,6 +405,7 @@ def log_set_in_session(
         user_id=session.user_id,
         session_id=session_key,
         rest_seconds=payload.rest_seconds,
+        form_session_id=payload.form_session_id,
     ))
 
     session.total_sets = (session.total_sets or 0) + 1
@@ -420,6 +421,7 @@ def log_set_in_session(
         weight=record.weight,
         rpe=record.rpe,
         rest_seconds=payload.rest_seconds,
+        form_session_id=payload.form_session_id,
         performed_at=record.performed_at.isoformat(),
     )
 
@@ -552,6 +554,97 @@ def log_set(payload: SetLogIn, db: Session = Depends(get_db)):
         rest_seconds=meta.rest_seconds,
         session_id=meta.session_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Weight suggestion
+# ---------------------------------------------------------------------------
+
+@router.get("/suggest/{user_id}", summary="Suggest weight for next set")
+def suggest_weight(
+    user_id: int,
+    exercise_key: str = Query(..., description="Normalised exercise key, e.g. bench_press"),
+    db: Session = Depends(get_db),
+):
+    """
+    Suggest a starting weight for the given exercise based on:
+      - The user's best logged weight × reps (1RM estimate via Epley formula)
+      - The most recent form score for that exercise (lower form → conservative suggestion)
+
+    Returns:
+      - suggested_weight_kg: recommended working weight
+      - basis: the best set that informed the recommendation
+      - form_score: last form analysis score (None if never analysed)
+      - form_note: human-readable note about form quality
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Best set by estimated 1RM for this exercise
+    logs = (
+        db.query(models.SetLog)
+        .filter(
+            models.SetLog.user_id == user_id,
+            models.SetLog.exercise_key == exercise_key,
+        )
+        .all()
+    )
+    if not logs:
+        raise HTTPException(status_code=404, detail="No logged sets found for this exercise")
+
+    def epley_1rm(weight: float, reps: int) -> float:
+        return weight * (1 + reps / 30.0) if reps > 0 else weight
+
+    best = max(logs, key=lambda s: epley_1rm(s.weight, s.reps))
+    best_1rm = epley_1rm(best.weight, best.reps)
+
+    # Last form analysis for this exercise
+    last_form = (
+        db.query(models.FormAnalysisSession)
+        .filter(
+            models.FormAnalysisSession.user_id == user_id,
+            models.FormAnalysisSession.exercise_key == exercise_key,
+        )
+        .order_by(models.FormAnalysisSession.created_at.desc())
+        .first()
+    )
+
+    form_score = last_form.overall_score if last_form else None
+
+    # Form-adjusted working weight:
+    # - form ≥ 85: 85% 1RM (standard training weight)
+    # - form 70–84: 80% 1RM
+    # - form < 70 or unknown: 75% 1RM (build form first)
+    if form_score is None or form_score < 70:
+        pct = 0.75
+        form_note = "Focus on form — start conservative"
+    elif form_score < 85:
+        pct = 0.80
+        form_note = "Form is decent — moderate load"
+    else:
+        pct = 0.85
+        form_note = "Good form — standard training load"
+
+    # Round to nearest 2.5 kg
+    raw = best_1rm * pct
+    suggested = round(raw / 2.5) * 2.5
+
+    return {
+        "user_id": user_id,
+        "exercise_key": exercise_key,
+        "suggested_weight_kg": suggested,
+        "estimated_1rm_kg": round(best_1rm, 1),
+        "load_percentage": pct,
+        "basis": {
+            "weight": best.weight,
+            "reps": best.reps,
+            "rpe": best.rpe,
+            "performed_at": best.performed_at.isoformat(),
+        },
+        "form_score": form_score,
+        "form_note": form_note,
+    }
 
 
 # ---------------------------------------------------------------------------

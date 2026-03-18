@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -22,6 +24,7 @@ from app.services.achievements import process_session, ACHIEVEMENT_META
 from app.services.multi_frame_analysis import analyse_batch
 
 router = APIRouter(prefix="/form", tags=["form"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/analyze", response_model=FormAnalyzeOut)
@@ -330,7 +333,8 @@ def analyze_batch(payload: FormBatchIn, db: Session = Depends(get_db)):
 
 
 @router.post("/realtime", response_model=FormRealtimeOut)
-def realtime_form(payload: FormRealtimeIn, db: Session = Depends(get_db)):
+@limiter.limit("120/minute")
+def realtime_form(request: Request, payload: FormRealtimeIn, db: Session = Depends(get_db)):
     """
     Frame-by-frame keypoint analysis for real-time skeleton overlay.
 

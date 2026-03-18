@@ -147,6 +147,7 @@ class SessionLogSetIn(BaseModel):
     weight: float = Field(..., ge=0)       # 0 = bodyweight
     rpe: Optional[float] = Field(default=None, ge=1.0, le=10.0)
     rest_seconds: Optional[int] = None
+    form_session_id: Optional[int] = None  # link to FormAnalysisSession
 
 
 class SessionSetOut(BaseModel):
@@ -157,6 +158,7 @@ class SessionSetOut(BaseModel):
     weight: float
     rpe: Optional[float] = None
     rest_seconds: Optional[int] = None
+    form_session_id: Optional[int] = None
     performed_at: str
 
 

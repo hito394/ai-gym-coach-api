@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import os
 
 from app.core.config import get_settings
@@ -14,6 +17,8 @@ from app.api.routes.analytics import router as analytics_router
 from app.api.routes.form import router as form_router
 from app.api.routes.exercises import router as exercises_router
 from app.api.routes.dashboard import router as dashboard_router
+from app.api.routes.auth import router as auth_router
+from app.api.routes.schedule import router as schedule_router
 from app.db.session import engine, SessionLocal
 from app.db.base import Base
 from app.utils.exercise_key import ensure_exercise_key_columns
@@ -22,11 +27,19 @@ from app.db.backfill import backfill_exercise_key
 settings = get_settings()
 configure_logging()
 
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="AI Gym Coach API",
     description="Personalised strength training coaching with real-time form analysis.",
     version="1.0.0",
 )
+
+# ---------------------------------------------------------------------------
+# Rate limiting
+# ---------------------------------------------------------------------------
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ---------------------------------------------------------------------------
 # CORS
@@ -63,6 +76,8 @@ app.include_router(analytics_router, prefix=settings.api_prefix)
 app.include_router(form_router, prefix=settings.api_prefix)
 app.include_router(exercises_router, prefix=settings.api_prefix)
 app.include_router(dashboard_router, prefix=settings.api_prefix)
+app.include_router(auth_router, prefix=settings.api_prefix)
+app.include_router(schedule_router, prefix=settings.api_prefix)
 
 
 # ---------------------------------------------------------------------------
