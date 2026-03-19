@@ -15,6 +15,7 @@ from app.api.deps import get_db
 from app.db import models
 from app.db.base import Base
 from app.main import app
+from tests.conftest import auth_headers
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +168,7 @@ class TestScheduleToday:
         with SL() as db:
             u = self._make_user(db)
             uid = u.id
-        r = client.get(f"/v1/schedule/today/{uid}")
+        r = client.get(f"/v1/schedule/today/{uid}", headers=auth_headers(uid))
         assert r.status_code == 200
         body = r.json()
         assert body["user_id"] == uid
@@ -178,7 +179,7 @@ class TestScheduleToday:
 
     def test_today_user_not_found(self, client_db):
         client, _ = client_db
-        r = client.get("/v1/schedule/today/99999")
+        r = client.get("/v1/schedule/today/99999", headers=auth_headers(99999))
         assert r.status_code == 404
 
     def test_today_with_plan(self, client_db):
@@ -201,7 +202,7 @@ class TestScheduleToday:
             db.add(day)
             db.commit()
             uid = u.id
-        r = client.get(f"/v1/schedule/today/{uid}")
+        r = client.get(f"/v1/schedule/today/{uid}", headers=auth_headers(uid))
         assert r.status_code == 200
         body = r.json()
         assert body["today_day"] is not None
@@ -224,7 +225,7 @@ class TestScheduleToday:
             db.add(session)
             db.commit()
             uid = u.id
-        r = client.get(f"/v1/schedule/today/{uid}")
+        r = client.get(f"/v1/schedule/today/{uid}", headers=auth_headers(uid))
         assert r.status_code == 200
         body = r.json()
         assert body["active_session"] is not None
@@ -237,7 +238,7 @@ class TestScheduleToday:
             db.add(u)
             db.commit()
             uid = u.id
-        r = client.get(f"/v1/schedule/today/{uid}")
+        r = client.get(f"/v1/schedule/today/{uid}", headers=auth_headers(uid))
         assert r.status_code == 200
         assert r.json()["date"] == date.today().isoformat()
 
@@ -259,7 +260,7 @@ class TestScheduleCalendar:
         with SL() as db:
             u = self._make_user(db)
             uid = u.id
-        r = client.get(f"/v1/schedule/calendar/{uid}", params={"month": "2026-03"})
+        r = client.get(f"/v1/schedule/calendar/{uid}", headers=auth_headers(uid), params={"month": "2026-03"})
         assert r.status_code == 200
         body = r.json()
         assert body["user_id"] == uid
@@ -269,7 +270,7 @@ class TestScheduleCalendar:
 
     def test_calendar_user_not_found(self, client_db):
         client, _ = client_db
-        r = client.get("/v1/schedule/calendar/99999", params={"month": "2026-03"})
+        r = client.get("/v1/schedule/calendar/99999", headers=auth_headers(99999), params={"month": "2026-03"})
         assert r.status_code == 404
 
     def test_calendar_missing_month(self, client_db):
@@ -277,7 +278,7 @@ class TestScheduleCalendar:
         with SL() as db:
             u = self._make_user(db)
             uid = u.id
-        r = client.get(f"/v1/schedule/calendar/{uid}")
+        r = client.get(f"/v1/schedule/calendar/{uid}", headers=auth_headers(uid))
         assert r.status_code == 422  # month is required
 
     def test_calendar_invalid_month_format(self, client_db):
@@ -285,7 +286,7 @@ class TestScheduleCalendar:
         with SL() as db:
             u = self._make_user(db)
             uid = u.id
-        r = client.get(f"/v1/schedule/calendar/{uid}", params={"month": "03-2026"})
+        r = client.get(f"/v1/schedule/calendar/{uid}", headers=auth_headers(uid), params={"month": "03-2026"})
         assert r.status_code == 422
 
     def test_calendar_with_session(self, client_db):
@@ -307,7 +308,7 @@ class TestScheduleCalendar:
             db.add(session)
             db.commit()
             uid = u.id
-        r = client.get(f"/v1/schedule/calendar/{uid}", params={"month": target_month})
+        r = client.get(f"/v1/schedule/calendar/{uid}", headers=auth_headers(uid), params={"month": target_month})
         assert r.status_code == 200
         body = r.json()
         assert body["days_with_activity"] == 1
@@ -335,7 +336,7 @@ class TestScheduleCalendar:
                 ))
             db.commit()
             uid = u.id
-        r = client.get(f"/v1/schedule/calendar/{uid}", params={"month": "2026-03"})
+        r = client.get(f"/v1/schedule/calendar/{uid}", headers=auth_headers(uid), params={"month": "2026-03"})
         assert r.status_code == 200
         day = r.json()["days"][0]
         assert day["session_count"] == 3
@@ -360,7 +361,7 @@ class TestScheduleCalendar:
             ))
             db.commit()
             uid = u.id
-        r = client.get(f"/v1/schedule/calendar/{uid}", params={"month": "2026-03"})
+        r = client.get(f"/v1/schedule/calendar/{uid}", headers=auth_headers(uid), params={"month": "2026-03"})
         assert r.status_code == 200
         assert r.json()["days_with_activity"] == 0
 
@@ -384,7 +385,7 @@ class TestScheduleCalendar:
             ))
             db.commit()
             uid = u.id
-        r = client.get(f"/v1/schedule/calendar/{uid}", params={"month": "2026-03"})
+        r = client.get(f"/v1/schedule/calendar/{uid}", headers=auth_headers(uid), params={"month": "2026-03"})
         assert r.status_code == 200
         day = r.json()["days"][0]
         assert day["form_score"] == 85.0

@@ -9,6 +9,7 @@ from app.api.deps import get_db
 from app.db import models
 from app.db.base import Base
 from app.main import app
+from tests.conftest import auth_headers
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +131,7 @@ class TestUserProfileGet:
 
     def test_get_profile_returns_user(self):
         user_id = _make_user(self.session_local)
-        resp = self.client.get(f"/v1/users/{user_id}/profile")
+        resp = self.client.get(f"/v1/users/{user_id}/profile", headers=auth_headers(user_id))
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == user_id
@@ -138,7 +139,7 @@ class TestUserProfileGet:
         assert data["goal"] == "strength"
 
     def test_get_profile_404_for_missing_user(self):
-        resp = self.client.get("/v1/users/99999/profile")
+        resp = self.client.get("/v1/users/99999/profile", headers=auth_headers(99999))
         assert resp.status_code == 404
 
 

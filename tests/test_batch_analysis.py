@@ -20,6 +20,7 @@ from app.api.deps import get_db
 from app.db import models
 from app.db.base import Base
 from app.main import app
+from tests.conftest import auth_headers
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +266,7 @@ class TestAnalyzeBatchEndpoint:
                 for f in clip
             ],
         }
-        resp = client.post("/v1/form/analyze-batch", json=payload)
+        resp = client.post("/v1/form/analyze-batch", json=payload, headers=auth_headers(uid))
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert "rep_count" in data
@@ -286,7 +287,7 @@ class TestAnalyzeBatchEndpoint:
                 for f in clip
             ],
         }
-        client.post("/v1/form/analyze-batch", json=payload)
+        client.post("/v1/form/analyze-batch", json=payload, headers=auth_headers(uid))
         db = sl()
         count = db.query(models.FormAnalysisSession).filter_by(user_id=uid).count()
         db.close()
@@ -305,7 +306,7 @@ class TestAnalyzeBatchEndpoint:
                 for f in clip
             ],
         }
-        client.post("/v1/form/analyze-batch", json=payload)
+        client.post("/v1/form/analyze-batch", json=payload, headers=auth_headers(uid))
         db = sl()
         ach = db.query(models.FormAchievement).filter_by(
             user_id=uid, achievement_type="first_session"
@@ -325,7 +326,7 @@ class TestAnalyzeBatchEndpoint:
                 for f in clip
             ],
         }
-        resp = client.post("/v1/form/analyze-batch", json=payload)
+        resp = client.post("/v1/form/analyze-batch", json=payload, headers=auth_headers(99999))
         assert resp.status_code == 404
 
     def test_batch_rejects_unsupported_exercise(self, ctx):
@@ -341,7 +342,7 @@ class TestAnalyzeBatchEndpoint:
                 for f in clip
             ],
         }
-        resp = client.post("/v1/form/analyze-batch", json=payload)
+        resp = client.post("/v1/form/analyze-batch", json=payload, headers=auth_headers(uid))
         assert resp.status_code == 422
 
     def test_batch_rejects_single_frame(self, ctx):
@@ -356,7 +357,7 @@ class TestAnalyzeBatchEndpoint:
                 {"timestamp_ms": clip[0]["timestamp_ms"], "keypoints": clip[0]["keypoints"]}
             ],
         }
-        resp = client.post("/v1/form/analyze-batch", json=payload)
+        resp = client.post("/v1/form/analyze-batch", json=payload, headers=auth_headers(uid))
         assert resp.status_code == 422
 
     def test_model_version_includes_rep_count(self, ctx):
@@ -372,7 +373,7 @@ class TestAnalyzeBatchEndpoint:
                 for f in clip
             ],
         }
-        resp = client.post("/v1/form/analyze-batch", json=payload)
+        resp = client.post("/v1/form/analyze-batch", json=payload, headers=auth_headers(uid))
         data = resp.json()
         # model_version = "v1-reps3"
         assert "reps" in data["model_version"]
@@ -390,6 +391,6 @@ class TestAnalyzeBatchEndpoint:
                 for f in clip
             ],
         }
-        client.post("/v1/form/analyze-batch", json=payload)
-        dash = client.get(f"/v1/users/{uid}/dashboard").json()
+        client.post("/v1/form/analyze-batch", json=payload, headers=auth_headers(uid))
+        dash = client.get(f"/v1/users/{uid}/dashboard", headers=auth_headers(uid)).json()
         assert dash["total_sessions"] == 1   # one DB session record

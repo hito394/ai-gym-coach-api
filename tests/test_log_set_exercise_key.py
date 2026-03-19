@@ -6,6 +6,7 @@ from app.main import app
 from app.api.deps import get_db
 from app.db.base import Base
 from app.db import models
+from tests.conftest import auth_headers
 
 
 def _create_client():
@@ -50,7 +51,7 @@ def test_log_set_persists_provided_exercise_key():
         "reps": 5,
         "weight": 100.0,
     }
-    response = client.post("/v1/workouts/log_set", json=payload)
+    response = client.post("/v1/workouts/log_set", json=payload, headers=auth_headers(payload["user_id"]))
     assert response.status_code == 200
     body = response.json()
     assert body["exercise_key"] == "custom_key"
@@ -71,7 +72,7 @@ def test_log_set_computes_exercise_key_from_name():
         "reps": 5,
         "weight": 100.0,
     }
-    response = client.post("/v1/workouts/log_set", json=payload)
+    response = client.post("/v1/workouts/log_set", json=payload, headers=auth_headers(payload["user_id"]))
     assert response.status_code == 200
     body = response.json()
     assert body["exercise_key"] == "bench_press"
@@ -91,7 +92,7 @@ def test_log_set_requires_exercise_key_or_name():
         "reps": 5,
         "weight": 100.0,
     }
-    response = client.post("/v1/workouts/log_set", json=payload)
+    response = client.post("/v1/workouts/log_set", json=payload, headers=auth_headers(payload["user_id"]))
     assert response.status_code == 422
     assert "exercise_key or exercise_name is required" in response.text
 

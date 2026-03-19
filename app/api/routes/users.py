@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.api.deps import get_db
+from app.core.security import get_current_user_id
 from app.schemas.user import (
     UserProfileIn,
     UserProfileOut,
@@ -14,7 +15,13 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.get("/{user_id}/profile", response_model=UserProfileOut)
-def get_profile(user_id: int, db: Session = Depends(get_db)):
+def get_profile(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -32,6 +39,7 @@ def get_profile(user_id: int, db: Session = Depends(get_db)):
 
 @router.post("/profile", response_model=UserProfileOut)
 def create_profile(payload: UserProfileIn, db: Session = Depends(get_db)):
+    """Legacy: create a user profile without auth (pre-auth clients)."""
     user = models.User(
         age=payload.age,
         weight_kg=payload.weight_kg,
@@ -58,7 +66,14 @@ def create_profile(payload: UserProfileIn, db: Session = Depends(get_db)):
 
 
 @router.post("/{user_id}/body-weight", response_model=BodyWeightLogOut)
-def log_body_weight(user_id: int, payload: BodyWeightLogIn, db: Session = Depends(get_db)):
+def log_body_weight(
+    user_id: int,
+    payload: BodyWeightLogIn,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -83,7 +98,14 @@ def log_body_weight(user_id: int, payload: BodyWeightLogIn, db: Session = Depend
 
 
 @router.get("/{user_id}/body-weight", response_model=list[BodyWeightLogOut])
-def get_body_weight_logs(user_id: int, limit: int = 30, db: Session = Depends(get_db)):
+def get_body_weight_logs(
+    user_id: int,
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

@@ -14,6 +14,7 @@ from app.utils.exercise_registry import (
     get_exercise_category,
     ALL_GYM_EXERCISES,
 )
+from tests.conftest import auth_headers
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +167,7 @@ class TestFormAnalyzeRejectsNonGym:
         resp = client.post(
             "/v1/form/analyze",
             json={"user_id": user_id, "exercise_key": bad_key, "diagnostics": {}},
+            headers=auth_headers(user_id),
         )
         assert resp.status_code == 422, f"Expected 422 for '{bad_key}', got {resp.status_code}"
         detail = resp.json()["detail"]
@@ -179,6 +181,7 @@ class TestFormAnalyzeRejectsNonGym:
         resp = client.post(
             "/v1/form/analyze",
             json={"user_id": user_id, "exercise_key": "deadlift", "diagnostics": {"quality": 80.0}},
+            headers=auth_headers(user_id),
         )
         assert resp.status_code == 200
         app.dependency_overrides = {}
@@ -200,6 +203,7 @@ class TestFormRealtimeRejectsNonGym:
                     "left_hip": {"x": 0.5, "y": 0.55, "confidence": 0.9},
                 },
             },
+            headers=auth_headers(user_id),
         )
         assert resp.status_code == 422, f"Expected 422 for '{bad_key}', got {resp.status_code}"
         app.dependency_overrides = {}
@@ -218,6 +222,7 @@ class TestFormRealtimeRejectsNonGym:
                     "right_shoulder": {"x": 0.38, "y": 0.40, "confidence": 0.95},
                 },
             },
+            headers=auth_headers(user_id),
         )
         assert resp.status_code == 200
         app.dependency_overrides = {}

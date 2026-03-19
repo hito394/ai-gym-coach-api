@@ -19,6 +19,7 @@ from app.api.deps import get_db
 from app.db import models
 from app.db.base import Base
 from app.main import app
+from tests.conftest import auth_headers
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +78,7 @@ def _post_analyze(client, user_id, exercise_key="squat", score_hint=80.0):
             "asymmetry": 2.0,
             "pose_jitter": 0.02,
         },
-    })
+    }, headers=auth_headers(user_id))
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +208,7 @@ class TestDashboard:
         uid = _create_user(sl)
         _post_analyze(client, uid)
 
-        resp = client.get(f"/v1/users/{uid}/dashboard")
+        resp = client.get(f"/v1/users/{uid}/dashboard", headers=auth_headers(uid))
         assert resp.status_code == 200
         data = resp.json()
         assert data["user_id"] == uid
@@ -224,7 +225,7 @@ class TestDashboard:
         for _ in range(3):
             _post_analyze(client, uid)
 
-        data = client.get(f"/v1/users/{uid}/dashboard").json()
+        data = client.get(f"/v1/users/{uid}/dashboard", headers=auth_headers(uid)).json()
         assert data["total_sessions"] == 3
 
     def test_dashboard_exercise_summary_improvement(self, ctx):
@@ -247,7 +248,7 @@ class TestDashboard:
         db.commit()
         db.close()
 
-        data = client.get(f"/v1/users/{uid}/dashboard").json()
+        data = client.get(f"/v1/users/{uid}/dashboard", headers=auth_headers(uid)).json()
         summary = {e["exercise_key"]: e for e in data["exercise_summary"]}
         bp = summary["bench_press"]
         assert bp["best_score"] == 80.0
@@ -256,14 +257,14 @@ class TestDashboard:
 
     def test_dashboard_404_unknown_user(self, ctx):
         client, _ = ctx
-        assert client.get("/v1/users/99999/dashboard").status_code == 404
+        assert client.get("/v1/users/99999/dashboard", headers=auth_headers(99999)).status_code == 404
 
     def test_dashboard_achievements_populated(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
         _post_analyze(client, uid)
 
-        data = client.get(f"/v1/users/{uid}/dashboard").json()
+        data = client.get(f"/v1/users/{uid}/dashboard", headers=auth_headers(uid)).json()
         assert len(data["achievements"]) >= 1
         first = data["achievements"][0]
         assert "type" in first
@@ -279,7 +280,7 @@ class TestFormAchievementsEndpoint:
         client, sl = ctx
         uid = _create_user(sl)
 
-        resp = client.get(f"/v1/form/achievements/{uid}")
+        resp = client.get(f"/v1/form/achievements/{uid}", headers=auth_headers(uid))
         assert resp.status_code == 200
         data = resp.json()
         assert data["user_id"] == uid
@@ -290,14 +291,14 @@ class TestFormAchievementsEndpoint:
         uid = _create_user(sl)
         _post_analyze(client, uid)
 
-        resp = client.get(f"/v1/form/achievements/{uid}")
+        resp = client.get(f"/v1/form/achievements/{uid}", headers=auth_headers(uid))
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["achievements"]) >= 1
 
     def test_achievements_404_unknown_user(self, ctx):
         client, _ = ctx
-        assert client.get("/v1/form/achievements/99999").status_code == 404
+        assert client.get("/v1/form/achievements/99999", headers=auth_headers(99999)).status_code == 404
 
 
 # ---------------------------------------------------------------------------

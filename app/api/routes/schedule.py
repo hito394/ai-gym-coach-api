@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.core.security import get_current_user_id
 from app.db import models
 from app.utils.exercise_key import normalize_exercise_key
 
@@ -30,7 +31,13 @@ router = APIRouter(prefix="/schedule", tags=["schedule"])
 # ---------------------------------------------------------------------------
 
 @router.get("/today/{user_id}", summary="Today's workout plan")
-def today(user_id: int, db: Session = Depends(get_db)):
+def today(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     """
     Returns:
       - today_day: the WorkoutDay that matches today's position in the plan
@@ -147,7 +154,10 @@ def calendar(
         pattern=r"^\d{4}-\d{2}$",
     ),
     db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
 ):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     """
     Returns a per-day summary for every day in *month* that had at least one
     workout session.  Empty days are omitted.

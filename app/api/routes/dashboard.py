@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.core.security import get_current_user_id
 from app.db import models
 from app.services.achievements import ACHIEVEMENT_META
 
@@ -19,7 +20,13 @@ router = APIRouter(prefix="/users", tags=["dashboard"])
 
 
 @router.get("/{user_id}/dashboard", summary="User progress dashboard")
-def get_dashboard(user_id: int, db: Session = Depends(get_db)):
+def get_dashboard(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     """
     Returns a consolidated view of the user's form training progress:
     - streak (consecutive days with at least one form session)

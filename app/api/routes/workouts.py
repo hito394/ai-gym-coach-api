@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.core.config import get_settings
+from app.core.security import get_current_user_id
 from app.db import models
 from app.schemas.workout import (
     ExercisePrescription,
@@ -129,7 +130,13 @@ def _session_to_out(session: models.WorkoutSession, sets: list) -> SessionOut:
 # ---------------------------------------------------------------------------
 
 @router.post("/generate", response_model=WorkoutPlanOut)
-def generate_workout(payload: GenerateWorkoutIn, db: Session = Depends(get_db)):
+def generate_workout(
+    payload: GenerateWorkoutIn,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != payload.profile_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == payload.profile_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -175,7 +182,13 @@ def generate_workout(payload: GenerateWorkoutIn, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.post("/generate-ai", response_model=WorkoutPlanOut, summary="AI workout menu generation")
-def generate_workout_ai(payload: GenerateAIMenuIn, db: Session = Depends(get_db)):
+def generate_workout_ai(
+    payload: GenerateAIMenuIn,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != payload.profile_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     """
     Generate a fully personalised workout plan using Claude.
 
@@ -252,7 +265,10 @@ def list_plans(
     user_id: int,
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
 ):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -301,7 +317,13 @@ def list_plans(
 # ---------------------------------------------------------------------------
 
 @router.post("/sessions", response_model=SessionOut, summary="Start a workout session")
-def start_session(payload: SessionStartIn, db: Session = Depends(get_db)):
+def start_session(
+    payload: SessionStartIn,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != payload.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == payload.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -327,7 +349,13 @@ def start_session(payload: SessionStartIn, db: Session = Depends(get_db)):
 
 
 @router.get("/sessions/active/{user_id}", response_model=SessionOut, summary="Get active session")
-def get_active_session(user_id: int, db: Session = Depends(get_db)):
+def get_active_session(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     session = (
         db.query(models.WorkoutSession)
         .filter(
@@ -351,12 +379,18 @@ def get_active_session(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/sessions/{session_key}", response_model=SessionOut, summary="View a session")
-def get_session(session_key: str, db: Session = Depends(get_db)):
+def get_session(
+    session_key: str,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
     session = db.query(models.WorkoutSession).filter(
         models.WorkoutSession.session_key == session_key
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    if current_user_id != session.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     sets = (
         db.query(models.SetLog)
         .filter(models.SetLog.user_id == session.user_id)
@@ -377,12 +411,15 @@ def log_set_in_session(
     session_key: str,
     payload: SessionLogSetIn,
     db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
 ):
     session = db.query(models.WorkoutSession).filter(
         models.WorkoutSession.session_key == session_key
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    if current_user_id != session.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     if session.finished_at is not None:
         raise HTTPException(status_code=409, detail="Session already finished")
 
@@ -435,12 +472,15 @@ def finish_session(
     session_key: str,
     payload: SessionFinishIn,
     db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
 ):
     session = db.query(models.WorkoutSession).filter(
         models.WorkoutSession.session_key == session_key
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    if current_user_id != session.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     if session.finished_at is not None:
         raise HTTPException(status_code=409, detail="Session already finished")
 
@@ -465,7 +505,13 @@ def finish_session(
 # ---------------------------------------------------------------------------
 
 @router.post("/log_set", response_model=SetLogOut)
-def log_set(payload: SetLogIn, db: Session = Depends(get_db)):
+def log_set(
+    payload: SetLogIn,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != payload.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == payload.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -565,7 +611,10 @@ def suggest_weight(
     user_id: int,
     exercise_key: str = Query(..., description="Normalised exercise key, e.g. bench_press"),
     db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
 ):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     """
     Suggest a starting weight for the given exercise based on:
       - The user's best logged weight × reps (1RM estimate via Epley formula)
@@ -652,7 +701,14 @@ def suggest_weight(
 # ---------------------------------------------------------------------------
 
 @router.get("/history/{user_id}", response_model=WorkoutHistoryOut)
-def workout_history(user_id: int, limit: int = 20, db: Session = Depends(get_db)):
+def workout_history(
+    user_id: int,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -713,7 +769,13 @@ def workout_history(user_id: int, limit: int = 20, db: Session = Depends(get_db)
 
 
 @router.get("/summary/{user_id}", response_model=ProgressSummaryOut)
-def progress_summary(user_id: int, db: Session = Depends(get_db)):
+def progress_summary(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

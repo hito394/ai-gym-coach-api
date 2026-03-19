@@ -12,6 +12,7 @@ from app.db import models
 from app.db.base import Base
 from app.main import app
 from app.services.keypoint_analysis import analyse_keypoints
+from tests.conftest import auth_headers
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +234,7 @@ class TestRealtimeEndpoint:
                 "view": "side",
                 "keypoints": _good_squat_keypoints("side"),
             },
+            headers=auth_headers(user_id),
         )
         assert response.status_code == 200
         body = response.json()
@@ -254,6 +256,7 @@ class TestRealtimeEndpoint:
                 "exercise_key": "Back Squat",  # should normalise
                 "keypoints": _good_squat_keypoints("side"),
             },
+            headers=auth_headers(user_id),
         )
         assert response.status_code == 200
         app.dependency_overrides = {}
@@ -265,6 +268,7 @@ class TestRealtimeEndpoint:
         response = client.post(
             "/v1/form/realtime",
             json={"user_id": user_id, "exercise_key": "  ", "keypoints": {}},
+            headers=auth_headers(user_id),
         )
         assert response.status_code == 422
         app.dependency_overrides = {}
@@ -278,6 +282,7 @@ class TestRealtimeEndpoint:
                 "exercise_key": "squat",
                 "keypoints": _good_squat_keypoints("side"),
             },
+            headers=auth_headers(9999),
         )
         assert response.status_code == 404
         app.dependency_overrides = {}
@@ -294,6 +299,7 @@ class TestRealtimeEndpoint:
                 "view": "front",
                 "keypoints": _knee_valgus_keypoints(),
             },
+            headers=auth_headers(user_id),
         )
         assert response.status_code == 200
         body = response.json()
@@ -314,6 +320,7 @@ class TestRealtimeEndpoint:
                 "view": "side",
                 "keypoints": _rounded_back_deadlift_keypoints(),
             },
+            headers=auth_headers(user_id),
         )
         assert response.status_code == 200
         body = response.json()
@@ -329,6 +336,7 @@ class TestRealtimeEndpoint:
         response = client.post(
             "/v1/form/realtime",
             json={"user_id": user_id, "exercise_key": "squat", "keypoints": {}},
+            headers=auth_headers(user_id),
         )
         assert response.status_code == 200
         body = response.json()

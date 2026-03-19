@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.core.config import get_settings
+from app.core.security import get_current_user_id
 from app.db import models
 from app.schemas.form import (
     FormAnalyzeIn,
@@ -28,7 +29,13 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/analyze", response_model=FormAnalyzeOut)
-def analyze_form(payload: FormAnalyzeIn, db: Session = Depends(get_db)):
+def analyze_form(
+    payload: FormAnalyzeIn,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != payload.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     settings = get_settings()
     user = db.query(models.User).filter(models.User.id == payload.user_id).first()
     if not user:
@@ -113,7 +120,10 @@ def form_history(
     exercise_key: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
 ):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -156,7 +166,10 @@ def form_trend(
     exercise_key: str = Query(...),
     limit: int = Query(default=10, ge=2, le=50),
     db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
 ):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -217,7 +230,10 @@ def form_achievements(
     user_id: int,
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
 ):
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -245,7 +261,13 @@ def form_achievements(
 
 
 @router.post("/analyze-batch", response_model=FormBatchOut)
-def analyze_batch(payload: FormBatchIn, db: Session = Depends(get_db)):
+def analyze_batch(
+    payload: FormBatchIn,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != payload.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     """
     Analyse a full set from a sequence of keypoint frames.
 
@@ -334,7 +356,14 @@ def analyze_batch(payload: FormBatchIn, db: Session = Depends(get_db)):
 
 @router.post("/realtime", response_model=FormRealtimeOut)
 @limiter.limit("120/minute")
-def realtime_form(request: Request, payload: FormRealtimeIn, db: Session = Depends(get_db)):
+def realtime_form(
+    request: Request,
+    payload: FormRealtimeIn,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    if current_user_id != payload.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     """
     Frame-by-frame keypoint analysis for real-time skeleton overlay.
 

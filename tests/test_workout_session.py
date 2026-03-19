@@ -13,6 +13,7 @@ from app.api.deps import get_db
 from app.db import models
 from app.db.base import Base
 from app.main import app
+from tests.conftest import auth_headers
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +72,7 @@ class TestSessionLifecycle:
     def test_start_session_returns_session_key(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        resp = client.post("/v1/workouts/sessions", json={"user_id": uid})
+        resp = client.post("/v1/workouts/sessions", json={"user_id": uid}, headers=auth_headers(uid))
         assert resp.status_code == 200
         data = resp.json()
         assert "session_key" in data
@@ -81,20 +82,20 @@ class TestSessionLifecycle:
 
     def test_start_session_404_unknown_user(self, ctx):
         client, _ = ctx
-        resp = client.post("/v1/workouts/sessions", json={"user_id": 99999})
+        resp = client.post("/v1/workouts/sessions", json={"user_id": 99999}, headers=auth_headers(99999))
         assert resp.status_code == 404
 
     def test_log_set_in_session(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}).json()["session_key"]
+        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}, headers=auth_headers(uid)).json()["session_key"]
 
         resp = client.post(f"/v1/workouts/sessions/{sk}/sets", json={
             "exercise_key": "squat",
             "reps": 5,
             "weight": 100.0,
             "rpe": 8.0,
-        })
+        }, headers=auth_headers(uid))
         assert resp.status_code == 200
         data = resp.json()
         assert data["exercise_key"] == "squat"
@@ -104,42 +105,42 @@ class TestSessionLifecycle:
     def test_session_totals_update_after_sets(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}).json()["session_key"]
+        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}, headers=auth_headers(uid)).json()["session_key"]
 
         for i in range(3):
             client.post(f"/v1/workouts/sessions/{sk}/sets", json={
                 "exercise_key": "bench_press",
                 "reps": 8,
                 "weight": 80.0,
-            })
+            }, headers=auth_headers(uid))
 
-        session = client.get(f"/v1/workouts/sessions/{sk}").json()
+        session = client.get(f"/v1/workouts/sessions/{sk}", headers=auth_headers(uid)).json()
         assert session["total_sets"] == 3
         assert session["total_volume"] == pytest.approx(3 * 8 * 80.0)
 
     def test_get_session_includes_sets(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}).json()["session_key"]
+        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}, headers=auth_headers(uid)).json()["session_key"]
 
         client.post(f"/v1/workouts/sessions/{sk}/sets", json={
             "exercise_key": "deadlift",
             "reps": 3,
             "weight": 150.0,
-        })
-        session = client.get(f"/v1/workouts/sessions/{sk}").json()
+        }, headers=auth_headers(uid))
+        session = client.get(f"/v1/workouts/sessions/{sk}", headers=auth_headers(uid)).json()
         assert len(session["sets"]) == 1
         assert session["sets"][0]["exercise_key"] == "deadlift"
 
     def test_finish_session(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}).json()["session_key"]
+        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}, headers=auth_headers(uid)).json()["session_key"]
         client.post(f"/v1/workouts/sessions/{sk}/sets", json={
             "exercise_key": "squat", "reps": 5, "weight": 100.0,
-        })
+        }, headers=auth_headers(uid))
 
-        resp = client.post(f"/v1/workouts/sessions/{sk}/finish", json={})
+        resp = client.post(f"/v1/workouts/sessions/{sk}/finish", json={}, headers=auth_headers(uid))
         assert resp.status_code == 200
         data = resp.json()
         assert data["is_active"] is False
@@ -148,36 +149,36 @@ class TestSessionLifecycle:
     def test_cannot_log_to_finished_session(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}).json()["session_key"]
-        client.post(f"/v1/workouts/sessions/{sk}/finish", json={})
+        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}, headers=auth_headers(uid)).json()["session_key"]
+        client.post(f"/v1/workouts/sessions/{sk}/finish", json={}, headers=auth_headers(uid))
 
         resp = client.post(f"/v1/workouts/sessions/{sk}/sets", json={
             "exercise_key": "squat", "reps": 5, "weight": 100.0,
-        })
+        }, headers=auth_headers(uid))
         assert resp.status_code == 409
 
     def test_get_active_session(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}).json()["session_key"]
+        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}, headers=auth_headers(uid)).json()["session_key"]
 
-        resp = client.get(f"/v1/workouts/sessions/active/{uid}")
+        resp = client.get(f"/v1/workouts/sessions/active/{uid}", headers=auth_headers(uid))
         assert resp.status_code == 200
         assert resp.json()["session_key"] == sk
 
     def test_active_session_404_when_none(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        resp = client.get(f"/v1/workouts/sessions/active/{uid}")
+        resp = client.get(f"/v1/workouts/sessions/active/{uid}", headers=auth_headers(uid))
         assert resp.status_code == 404
 
     def test_active_session_none_after_finish(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}).json()["session_key"]
-        client.post(f"/v1/workouts/sessions/{sk}/finish", json={})
+        sk = client.post("/v1/workouts/sessions", json={"user_id": uid}, headers=auth_headers(uid)).json()["session_key"]
+        client.post(f"/v1/workouts/sessions/{sk}/finish", json={}, headers=auth_headers(uid))
 
-        resp = client.get(f"/v1/workouts/sessions/active/{uid}")
+        resp = client.get(f"/v1/workouts/sessions/active/{uid}", headers=auth_headers(uid))
         assert resp.status_code == 404
 
     def test_session_with_plan_id(self, ctx):
@@ -186,7 +187,7 @@ class TestSessionLifecycle:
         # Create a plan first
         plan_resp = client.post("/v1/workouts/generate", json={
             "profile_id": uid, "split": "ppl",
-        })
+        }, headers=auth_headers(uid))
         plan_id = None
         if plan_resp.status_code == 200:
             # Get the plan id from db
@@ -197,14 +198,15 @@ class TestSessionLifecycle:
 
         resp = client.post("/v1/workouts/sessions", json={
             "user_id": uid, "plan_id": plan_id,
-        })
+        }, headers=auth_headers(uid))
         assert resp.status_code == 200
         if plan_id:
             assert resp.json()["plan_id"] == plan_id
 
     def test_session_404_invalid_session_key(self, ctx):
-        client, _ = ctx
-        resp = client.get("/v1/workouts/sessions/nonexistent-key-xyz")
+        client, sl = ctx
+        uid = _create_user(sl)
+        resp = client.get("/v1/workouts/sessions/nonexistent-key-xyz", headers=auth_headers(uid))
         assert resp.status_code == 404
 
 
@@ -216,15 +218,15 @@ class TestPlansListing:
     def test_list_plans_empty(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        resp = client.get(f"/v1/workouts/plans/{uid}")
+        resp = client.get(f"/v1/workouts/plans/{uid}", headers=auth_headers(uid))
         assert resp.status_code == 200
         assert resp.json()["plans"] == []
 
     def test_list_plans_after_generate(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        client.post("/v1/workouts/generate", json={"profile_id": uid, "split": "ppl"})
-        resp = client.get(f"/v1/workouts/plans/{uid}")
+        client.post("/v1/workouts/generate", json={"profile_id": uid, "split": "ppl"}, headers=auth_headers(uid))
+        resp = client.get(f"/v1/workouts/plans/{uid}", headers=auth_headers(uid))
         assert resp.status_code == 200
         plans = resp.json()["plans"]
         assert len(plans) >= 1
@@ -233,13 +235,13 @@ class TestPlansListing:
     def test_list_plans_includes_days(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        client.post("/v1/workouts/generate", json={"profile_id": uid, "split": "full_body"})
-        plans = client.get(f"/v1/workouts/plans/{uid}").json()["plans"]
+        client.post("/v1/workouts/generate", json={"profile_id": uid, "split": "full_body"}, headers=auth_headers(uid))
+        plans = client.get(f"/v1/workouts/plans/{uid}", headers=auth_headers(uid)).json()["plans"]
         assert len(plans[0]["days"]) > 0
 
     def test_list_plans_404_unknown_user(self, ctx):
         client, _ = ctx
-        resp = client.get("/v1/workouts/plans/99999")
+        resp = client.get("/v1/workouts/plans/99999", headers=auth_headers(99999))
         assert resp.status_code == 404
 
 
@@ -255,7 +257,7 @@ class TestAIMenuGeneration:
             "profile_id": uid,
             "split": "ppl",
             "readiness_score": 0.8,
-        })
+        }, headers=auth_headers(uid))
         assert resp.status_code == 200
         data = resp.json()
         assert "days" in data
@@ -265,7 +267,7 @@ class TestAIMenuGeneration:
         client, _ = ctx
         resp = client.post("/v1/workouts/generate-ai", json={
             "profile_id": 99999, "split": "ppl",
-        })
+        }, headers=auth_headers(99999))
         assert resp.status_code == 404
 
     def test_generate_ai_invalid_split(self, ctx):
@@ -273,13 +275,13 @@ class TestAIMenuGeneration:
         uid = _create_user(sl)
         resp = client.post("/v1/workouts/generate-ai", json={
             "profile_id": uid, "split": "bro_split",
-        })
+        }, headers=auth_headers(uid))
         assert resp.status_code == 422
 
     def test_generate_ai_saves_to_db(self, ctx):
         client, sl = ctx
         uid = _create_user(sl)
-        client.post("/v1/workouts/generate-ai", json={"profile_id": uid, "split": "upper_lower"})
+        client.post("/v1/workouts/generate-ai", json={"profile_id": uid, "split": "upper_lower"}, headers=auth_headers(uid))
         db = sl()
         count = db.query(models.WorkoutPlan).filter_by(user_id=uid).count()
         db.close()
