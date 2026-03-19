@@ -12,9 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.core.config import get_settings
 from app.core.security import get_current_user_id
 from app.db import models
 from app.services.achievements import ACHIEVEMENT_META
+from app.services.weekly_report import generate_weekly_report
 
 router = APIRouter(prefix="/users", tags=["dashboard"])
 
@@ -134,6 +136,38 @@ def get_dashboard(
         "exercise_summary": exercise_summary,
         "achievements":     achievements_out,
     }
+
+
+@router.get("/{user_id}/weekly-report", summary="Weekly AI coaching report")
+def weekly_report(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """
+    Generates a personalised weekly coaching report using Claude.
+
+    Aggregates the last 7 days of:
+    - Workout sessions (volume, frequency)
+    - Form analysis scores
+    - Achievements earned
+    - Body weight change
+
+    Returns an AI-written (or rule-based) coaching summary in Japanese markdown.
+    """
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    settings = get_settings()
+    report = generate_weekly_report(
+        user_id=user_id,
+        db=db,
+        api_key=settings.anthropic_api_key or None,
+    )
+    return report
 
 
 # ---------------------------------------------------------------------------

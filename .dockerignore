@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+*.db
+*.pyc
+__pycache__/
+.pytest_cache/
+tests/
+.github/
+*.md
+app.db
+test.db

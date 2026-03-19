@@ -94,6 +94,28 @@ class BodyWeightLog(Base):
     measured_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class BodyMeasurement(Base):
+    """Detailed body composition snapshots (all fields optional)."""
+    __tablename__ = "body_measurements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    measured_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    # composition
+    body_fat_pct = Column(Float, nullable=True)
+    muscle_mass_kg = Column(Float, nullable=True)
+    # circumferences (cm)
+    chest_cm = Column(Float, nullable=True)
+    waist_cm = Column(Float, nullable=True)
+    hips_cm = Column(Float, nullable=True)
+    left_arm_cm = Column(Float, nullable=True)
+    right_arm_cm = Column(Float, nullable=True)
+    left_thigh_cm = Column(Float, nullable=True)
+    right_thigh_cm = Column(Float, nullable=True)
+    neck_cm = Column(Float, nullable=True)
+    notes = Column(String, nullable=True)
+
+
 class RecommendationLog(Base):
     __tablename__ = "recommendation_logs"
 
