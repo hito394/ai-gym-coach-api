@@ -9,6 +9,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=True)
+    password_hash = Column(String, nullable=True)
     age = Column(Integer, nullable=True)
     weight_kg = Column(Float, nullable=True)
     height_cm = Column(Float, nullable=True)
@@ -79,6 +80,7 @@ class SetLogMeta(Base):
     set_log_id = Column(Integer, ForeignKey("set_logs.id"), unique=True, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     session_id = Column(String, nullable=True, index=True)
+    form_session_id = Column(Integer, ForeignKey("form_analysis_sessions.id"), nullable=True, index=True)
     rest_seconds = Column(Integer, nullable=True)
     logged_at = Column(DateTime, default=datetime.utcnow)
 
@@ -90,6 +92,28 @@ class BodyWeightLog(Base):
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     weight_kg = Column(Float, nullable=False)
     measured_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class BodyMeasurement(Base):
+    """Detailed body composition snapshots (all fields optional)."""
+    __tablename__ = "body_measurements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    measured_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    # composition
+    body_fat_pct = Column(Float, nullable=True)
+    muscle_mass_kg = Column(Float, nullable=True)
+    # circumferences (cm)
+    chest_cm = Column(Float, nullable=True)
+    waist_cm = Column(Float, nullable=True)
+    hips_cm = Column(Float, nullable=True)
+    left_arm_cm = Column(Float, nullable=True)
+    right_arm_cm = Column(Float, nullable=True)
+    left_thigh_cm = Column(Float, nullable=True)
+    right_thigh_cm = Column(Float, nullable=True)
+    neck_cm = Column(Float, nullable=True)
+    notes = Column(String, nullable=True)
 
 
 class RecommendationLog(Base):
@@ -123,3 +147,49 @@ class FormAnalysisSession(Base):
     diagnostics = Column(JSON, nullable=True)
     feedback = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FormPersonalBest(Base):
+    """Tracks each user's best overall form score per exercise."""
+    __tablename__ = "form_personal_bests"
+    __table_args__ = (
+        UniqueConstraint("user_id", "exercise_key", name="uq_form_pb_user_exercise"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    exercise_key = Column(String, nullable=False, index=True)
+    best_score = Column(Float, nullable=False)
+    session_id = Column(Integer, ForeignKey("form_analysis_sessions.id"), nullable=True)
+    achieved_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FormAchievement(Base):
+    """Milestone events surfaced in the user dashboard."""
+    __tablename__ = "form_achievements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    achievement_type = Column(String, nullable=False)   # e.g. "first_90", "personal_best"
+    exercise_key = Column(String, nullable=True)
+    score = Column(Float, nullable=True)
+    meta = Column(JSON, nullable=True)                  # extra context
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WorkoutSession(Base):
+    """
+    A single training session.  Sets logged during the session are
+    linked via SetLog.session_id == WorkoutSession.session_key.
+    """
+    __tablename__ = "workout_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    session_key = Column(String, unique=True, nullable=False, index=True)
+    plan_id = Column(Integer, ForeignKey("workout_plans.id"), nullable=True)
+    notes = Column(String, nullable=True)
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    total_sets = Column(Integer, default=0)
+    total_volume = Column(Float, default=0.0)          # kg × reps
