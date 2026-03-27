@@ -66,18 +66,12 @@ def _create_user(sl, experience_level="intermediate", goal="strength"):
 
 
 def _post_analyze(client, user_id, exercise_key="squat", score_hint=80.0):
-    """Submit a form analysis with a quality value that drives the score near score_hint."""
-    # quality is one of the inputs; overall_score depends on diagnostics
-    return client.post("/v1/form/analyze", json={
+    """Log a workout feeling entry (replaces old form/analyze call)."""
+    return client.post("/v1/form/log", json={
         "user_id": user_id,
         "exercise_key": exercise_key,
-        "diagnostics": {
-            "quality": 90,
-            "depth_norm": 0.22,
-            "torso_angle": 15,
-            "asymmetry": 2.0,
-            "pose_jitter": 0.02,
-        },
+        "feeling": 8,
+        "note": "test session",
     }, headers=auth_headers(user_id))
 
 

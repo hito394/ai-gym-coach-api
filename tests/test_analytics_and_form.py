@@ -151,7 +151,7 @@ def test_analytics_endpoints_return_expected_shapes():
     app.dependency_overrides = {}
 
 
-def test_form_analyze_returns_feedback_and_scores():
+def test_form_log_returns_entry():
     client, session_local = _create_client()
     db = session_local()
     user = models.User(email="form@test.dev", training_days=3)
@@ -163,23 +163,16 @@ def test_form_analyze_returns_feedback_and_scores():
     payload = {
         "user_id": user.id,
         "exercise_key": "squat",
-        "diagnostics": {
-            "quality": 82.0,
-            "pose_jitter": 0.03,
-            "depth_norm": 0.12,
-            "knee_valgus_norm": 0.08,
-            "torso_angle": 22.0,
-            "symmetry": {"knee_angle_diff": 6.0, "hip_angle_diff": 5.0},
-            "rep_issues": ["depth_insufficient"],
-        },
+        "feeling": 8,
+        "note": "felt great today",
     }
 
-    response = client.post("/v1/form/analyze", json=payload, headers=auth_headers(payload["user_id"]))
+    response = client.post("/v1/form/log", json=payload, headers=auth_headers(payload["user_id"]))
     assert response.status_code == 200
     body = response.json()
-    assert "feedback" in body
-    assert "overall_score" in body
-    assert isinstance(body.get("issues"), list)
+    assert body["feeling"] == 8
+    assert body["note"] == "felt great today"
+    assert body["exercise_key"] == "squat"
 
     app.dependency_overrides = {}
 

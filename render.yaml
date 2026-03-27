@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: gymlog-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gymlog-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WORKERS
+        value: "1"
+      - key: ANTHROPIC_API_KEY
+        sync: false   # set manually in Render dashboard
+      - key: BACKFILL_ON_STARTUP
+        value: "false"
+
+databases:
+  - name: gymlog-db
+    plan: free
