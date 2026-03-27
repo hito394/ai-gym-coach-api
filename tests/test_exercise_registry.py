@@ -155,74 +155,29 @@ def _make_user(session_local):
     return user_id
 
 
-_NON_GYM_EXERCISES = ["golf_swing", "tennis_serve", "swimming", "running", "yoga_pose"]
+class TestFormLogAcceptsAnyKey:
+    """POST /v1/form/log accepts any non-empty exercise_key string."""
 
-
-class TestFormAnalyzeRejectsNonGym:
-    @pytest.mark.parametrize("bad_key", _NON_GYM_EXERCISES)
-    def test_form_analyze_rejects_non_gym(self, bad_key):
+    def test_form_log_accepts_gym_exercise(self):
         client, session_local = _create_client()
         user_id = _make_user(session_local)
 
         resp = client.post(
-            "/v1/form/analyze",
-            json={"user_id": user_id, "exercise_key": bad_key, "diagnostics": {}},
-            headers=auth_headers(user_id),
-        )
-        assert resp.status_code == 422, f"Expected 422 for '{bad_key}', got {resp.status_code}"
-        detail = resp.json()["detail"]
-        assert any("gym" in str(d).lower() or "weight" in str(d).lower() for d in detail)
-        app.dependency_overrides = {}
-
-    def test_form_analyze_accepts_gym_exercise(self):
-        client, session_local = _create_client()
-        user_id = _make_user(session_local)
-
-        resp = client.post(
-            "/v1/form/analyze",
-            json={"user_id": user_id, "exercise_key": "deadlift", "diagnostics": {"quality": 80.0}},
+            "/v1/form/log",
+            json={"user_id": user_id, "exercise_key": "deadlift", "feeling": 8},
             headers=auth_headers(user_id),
         )
         assert resp.status_code == 200
         app.dependency_overrides = {}
 
-
-class TestFormRealtimeRejectsNonGym:
-    @pytest.mark.parametrize("bad_key", _NON_GYM_EXERCISES)
-    def test_realtime_rejects_non_gym(self, bad_key):
+    def test_form_log_rejects_empty_key(self):
         client, session_local = _create_client()
         user_id = _make_user(session_local)
 
         resp = client.post(
-            "/v1/form/realtime",
-            json={
-                "user_id": user_id,
-                "exercise_key": bad_key,
-                "keypoints": {
-                    "left_shoulder": {"x": 0.5, "y": 0.3, "confidence": 0.9},
-                    "left_hip": {"x": 0.5, "y": 0.55, "confidence": 0.9},
-                },
-            },
+            "/v1/form/log",
+            json={"user_id": user_id, "exercise_key": "", "feeling": 8},
             headers=auth_headers(user_id),
         )
-        assert resp.status_code == 422, f"Expected 422 for '{bad_key}', got {resp.status_code}"
-        app.dependency_overrides = {}
-
-    def test_realtime_accepts_gym_exercise(self):
-        client, session_local = _create_client()
-        user_id = _make_user(session_local)
-
-        resp = client.post(
-            "/v1/form/realtime",
-            json={
-                "user_id": user_id,
-                "exercise_key": "bench_press",
-                "keypoints": {
-                    "left_shoulder": {"x": 0.62, "y": 0.40, "confidence": 0.95},
-                    "right_shoulder": {"x": 0.38, "y": 0.40, "confidence": 0.95},
-                },
-            },
-            headers=auth_headers(user_id),
-        )
-        assert resp.status_code == 200
+        assert resp.status_code == 422
         app.dependency_overrides = {}
